@@ -4,8 +4,8 @@
     "servers": {
       "spotify-playlists": {
         "type": "local",
-        "command": ["node", "/ABSOLUTE/PATH/spotify-playlist-mcp/dist/server.js"],
-        "cwd": "/ABSOLUTE/PATH/spotify-playlist-mcp",
+        "command": ["node", "/ABSOLUTE/PATH/spotify-custom-mcp/dist/server.js"],
+        "cwd": "/ABSOLUTE/PATH/spotify-custom-mcp",
         "codemode": false
       }
     }
