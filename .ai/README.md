@@ -16,7 +16,7 @@ step 7, then follow the route exactly in order.
 
 ## Rules
 
-- This folder is the local source of truth for AI task context in `spotify-playlist-mcp`.
+- This folder is the local source of truth for AI task context in `spotify-custom-mcp`.
 - Keep file descriptions and task routes updated when project-specific decisions or boundaries change.
 - Read only the files selected by the applicable task route or an exact user-named file.
 
