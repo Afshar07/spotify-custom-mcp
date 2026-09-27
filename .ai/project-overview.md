@@ -2,7 +2,7 @@
 
 ## Purpose and boundary
 
-`spotify-playlist-mcp` is a small private Node.js/TypeScript MCP server for
+`spotify-custom-mcp` is a small private Node.js/TypeScript MCP server for
 OpenCode. It reads and mutates existing Spotify playlists and adds missing
 tracks to the current user's Liked Songs through Spotify's Web API.
 
@@ -33,12 +33,10 @@ not part of the MCP stdio process.
 - MCP server stdout is protocol-only. Send any server diagnostics to stderr.
   The standalone authorization program may print its user-facing bootstrap
   instructions to stdout.
-- Playlist mutations operate on exact Spotify URIs returned by Spotify search
-  or a prior playlist read. Do not infer IDs from names or URLs.
+- Playlist mutations operate on validated Spotify track or episode URIs returned by Spotify search or a prior playlist read. Do not infer IDs from names or URLs. Liked Songs accepts track URIs only.
 - Read before changing when duplicates, positions, or current contents matter.
   Playlist state may change between that read and the later write.
-- Prefer safe high-level work (read → search → URI deduplicate → add) over
-  remove, reorder, or replacement operations.
+- Prefer the safe high-level `add_unique_playlist_items` workflow for ordinary additions; it reads current playlist state and reports duplicate URIs. Use remove, reorder, or replacement only when the requested state is explicit.
 - Respect request batch limits: at most 100 playlist URIs and at most 40
   Liked Songs URIs per call.
 
