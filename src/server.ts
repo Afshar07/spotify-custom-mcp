@@ -40,9 +40,20 @@ interface IPlaylistMutationPreview {
   rangeLength?: number;
 }
 
+const spotifyPlaylistItemUriSchema = z
+  .string()
+  .regex(
+    /^spotify:(?:track|episode):[A-Za-z0-9]+$/,
+    'Expected a Spotify track or episode URI.',
+  );
+
+const spotifyTrackUriSchema = z
+  .string()
+  .regex(/^spotify:track:[A-Za-z0-9]+$/, 'Expected a Spotify track URI.');
+
 const spotify = new SpotifyClient(getSpotifyConfig());
 const server = new McpServer({
-  name: 'spotify-playlist-mcp',
+  name: 'spotify-custom-mcp',
   version: '0.1.0',
 });
 
@@ -198,7 +209,7 @@ server.registerTool(
       'Add up to 100 Spotify track/episode URIs to an existing playlist. Read the playlist first when duplicate prevention matters.',
     inputSchema: {
       playlistId: z.string().min(1),
-      uris: z.array(z.string().min(1)).min(1).max(100),
+      uris: z.array(spotifyPlaylistItemUriSchema).min(1).max(100),
       position: z.number().int().min(0).optional(),
       expectedSnapshotId: z.string().min(1).optional(),
       dryRun: z.boolean().default(false),
@@ -240,7 +251,7 @@ server.registerTool(
       'Preferred playlist-addition tool. Reads the current playlist, rejects stale expected snapshots, and adds only requested URIs not already present or duplicated in the request.',
     inputSchema: {
       playlistId: z.string().min(1),
-      uris: z.array(z.string().min(1)).min(1).max(100),
+      uris: z.array(spotifyPlaylistItemUriSchema).min(1).max(100),
       position: z.number().int().min(0).optional(),
       expectedSnapshotId: z.string().min(1).optional(),
       dryRun: z.boolean().default(false),
@@ -298,7 +309,7 @@ server.registerTool(
     description: 'Remove up to 100 Spotify URIs from an existing playlist.',
     inputSchema: {
       playlistId: z.string().min(1),
-      uris: z.array(z.string().min(1)).min(1).max(100),
+      uris: z.array(spotifyPlaylistItemUriSchema).min(1).max(100),
       snapshotId: z.string().min(1).optional(),
       expectedSnapshotId: z.string().min(1).optional(),
       dryRun: z.boolean().default(false),
@@ -399,7 +410,7 @@ server.registerTool(
       'Replace all playlist items with up to 100 Spotify URIs. Destructive: existing items not supplied are removed.',
     inputSchema: {
       playlistId: z.string().min(1),
-      uris: z.array(z.string().min(1)).max(100),
+      uris: z.array(spotifyPlaylistItemUriSchema).max(100),
       expectedSnapshotId: z.string().min(1).optional(),
       dryRun: z.boolean().default(false),
     },
@@ -434,7 +445,7 @@ server.registerTool(
     description:
       'Check up to 40 Spotify track URIs against the current user\'s Liked Songs and save only those not already present.',
     inputSchema: {
-      uris: z.array(z.string().regex(/^spotify:track:/)).min(1).max(40),
+      uris: z.array(spotifyTrackUriSchema).min(1).max(40),
       dryRun: z.boolean().default(false),
     },
   },
