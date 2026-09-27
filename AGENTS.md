@@ -1,5 +1,5 @@
 <!-- toolkit:sha256=cc5bb7922305b90b36fc6397558f217edef1ae78189a2ad0150ad3b8ec91a979 -->
-# spotify-playlist-mcp Agent Router
+# spotify-custom-mcp Agent Router
 
 This file is the stable entry point for AI-assisted work in this workspace. Markdown context is authoritative.
 
@@ -16,7 +16,7 @@ This workspace uses routed Markdown context. Do not read every context file.
 
 | Project | Workspace-relative path | Local index | Shared guidance |
 | --- | --- | --- | --- |
-| spotify-playlist-mcp | `.` | `.ai/README.md` | `.ai/projects/spotify-playlist-mcp.md` |
+| spotify-custom-mcp | `.` | `.ai/README.md` | `.ai/projects/spotify-custom-mcp.md` |
 
 Held projects are intentionally absent from this active routing table; their scope and boundaries remain in shared guidance.
 
