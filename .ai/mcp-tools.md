@@ -11,8 +11,8 @@ API request and response handling.
 | `search_tracks` | Searches tracks (1–10) and returns exact Spotify URIs with compact metadata. |
 | `get_playlist_items` | Reads one page or all pages of a playlist. Use `all=true` before additions when duplicate detection matters. |
 | `get_playlist_summary` | Reads compact track summaries plus the current playlist snapshot ID for planning and concurrency checks. |
-| `add_playlist_items` | Adds 1–100 track or episode URIs, optionally at a position. It does not deduplicate. |
-| `add_unique_playlist_items` | Preferred addition workflow: reads the playlist, validates an optional expected snapshot, deduplicates, then adds only missing URIs. |
+| `add_playlist_items` | Adds 1–100 validated Spotify track or episode URIs, optionally at a position. It does not deduplicate. |
+| `add_unique_playlist_items` | Preferred addition workflow: validates Spotify track/episode URIs, reads the playlist, validates an optional expected snapshot, deduplicates, then adds only missing URIs. |
 | `remove_playlist_items` | Removes 1–100 URIs. Optional `snapshotId` guards against stale playlist state. Destructive. |
 | `reorder_playlist_items` | Moves a contiguous position range. Optional `snapshotId` guards against stale playlist state. Destructive in effect. |
 | `replace_playlist_items` | Replaces the whole playlist with 0–100 URIs; omitted existing items are removed. Explicitly destructive. |
@@ -52,6 +52,8 @@ playlist. Never describe it as a safe way to append or edit one item.
 6. Update `README.md`, this file, and focused `.ai` context together; run
    `npm run typecheck` and `npm run build`.
 
-Do not silently deduplicate, retry a non-idempotent mutation after an unknown
-network outcome, or infer a requested track from a display name. Such choices
-can alter playlist state unexpectedly.
+Do not silently change low-level tool semantics, retry a non-idempotent mutation
+after an unknown network outcome, or infer a requested track from a display
+name. Deduplication is intentional only in `add_unique_playlist_items`, whose
+contract explicitly reports both added and skipped duplicate URIs. Such choices
+must remain visible in tool behavior because they can alter playlist state.
