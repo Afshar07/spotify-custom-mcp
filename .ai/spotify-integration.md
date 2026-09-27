@@ -31,9 +31,11 @@ and retry the same request. Do not log token-bearing requests or responses.
 - Liked Songs contains/save calls are capped at 40 URIs per request. The
   current tool permits only `spotify:track:` URIs and avoids saving tracks
   already present.
-- Playlist endpoints return a `snapshot_id` after mutations. Remove and
-  reorder may accept it to reject operations against changed state; add and
-  replace do not accept a snapshot in this implementation.
+- Playlist endpoints return a `snapshot_id` after mutations. The client can read a
+  playlist's current snapshot before any mutation when an `expectedSnapshotId` is
+  supplied; a mismatch aborts before the write. Remove and reorder also pass that
+  snapshot to Spotify's native request guard. Add and replace do not accept a
+  snapshot in this implementation, so their protection is the pre-write check.
 - Search is track-only and caps results at 10. Playlist add/replace schemas
   allow Spotify track or episode URIs, but callers must provide exact Spotify
   URIs.

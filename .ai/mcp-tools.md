@@ -10,22 +10,26 @@ API request and response handling.
 | --- | --- |
 | `search_tracks` | Searches tracks (1–10) and returns exact Spotify URIs with compact metadata. |
 | `get_playlist_items` | Reads one page or all pages of a playlist. Use `all=true` before additions when duplicate detection matters. |
+| `get_playlist_summary` | Reads compact track summaries plus the current playlist snapshot ID for planning and concurrency checks. |
 | `add_playlist_items` | Adds 1–100 track or episode URIs, optionally at a position. It does not deduplicate. |
+| `add_unique_playlist_items` | Preferred addition workflow: reads the playlist, validates an optional expected snapshot, deduplicates, then adds only missing URIs. |
 | `remove_playlist_items` | Removes 1–100 URIs. Optional `snapshotId` guards against stale playlist state. Destructive. |
 | `reorder_playlist_items` | Moves a contiguous position range. Optional `snapshotId` guards against stale playlist state. Destructive in effect. |
 | `replace_playlist_items` | Replaces the whole playlist with 0–100 URIs; omitted existing items are removed. Explicitly destructive. |
 | `add_liked_tracks` | For 1–40 **track** URIs, checks Liked Songs first and saves only missing tracks. |
 
-Snapshot IDs are returned by playlist mutation endpoints. The current read tool
-does not expose a playlist snapshot ID, so a caller can only supply one it
-already has; do not document snapshot-based concurrency as fully enforced.
+All playlist mutation tools accept an optional `expectedSnapshotId`. When supplied,
+the server reads the current snapshot before mutation and rejects a mismatch without
+making changes. `get_playlist_summary` exposes a current snapshot ID for this flow.
+The Spotify endpoint snapshot supplied as `snapshotId` remains available on remove
+and reorder for backwards compatibility.
 
 ## Mutation workflow
 
-For ordinary additions, read the whole playlist, search Spotify for exact
-tracks, compare URIs, then add only missing URIs. Re-read when a decision is
-sensitive to current ordering or contents: other clients can change a playlist
-between calls.
+For ordinary additions, use `add_unique_playlist_items`. It reads the whole
+playlist, compares exact URIs, and reports additions and duplicates. Re-read when a
+decision is sensitive to current ordering or contents: other clients can change a
+playlist between calls.
 
 Use removal, reorder, and especially replacement only when the requested
 state is explicit. `replace_playlist_items` with an empty URI list clears the

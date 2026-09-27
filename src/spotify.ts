@@ -60,6 +60,10 @@ export interface ISpotifySnapshotResponse {
   snapshot_id: string;
 }
 
+export interface ISpotifyPlaylistSnapshot {
+  snapshot_id?: string;
+}
+
 export interface ISpotifySearchResponse {
   tracks?: ISpotifyPaging<ISpotifyTrack>;
 }
@@ -111,6 +115,7 @@ export interface IReplacePlaylistItemsOptions {
 export interface IAddLikedTracksResult {
   addedUris: string[];
   alreadySavedUris: string[];
+  dryRun?: boolean;
 }
 
 export class SpotifyClient {
@@ -173,6 +178,13 @@ export class SpotifyClient {
       next: null,
       previous: null,
     };
+  }
+
+  public async getPlaylistSnapshot(playlistId: string): Promise<string | undefined> {
+    const playlist = await this.request<ISpotifyPlaylistSnapshot>(
+      `/playlists/${encodeURIComponent(playlistId)}?fields=snapshot_id`,
+    );
+    return playlist.snapshot_id;
   }
 
   public async addPlaylistItems(
@@ -244,7 +256,10 @@ export class SpotifyClient {
     );
   }
 
-  public async addLikedTracksIfMissing(uris: string[]): Promise<IAddLikedTracksResult> {
+  public async addLikedTracksIfMissing(
+    uris: string[],
+    dryRun = false,
+  ): Promise<IAddLikedTracksResult> {
     this.assertLibraryBatch(uris);
 
     const params = new URLSearchParams({ uris: uris.join(',') });
@@ -257,7 +272,7 @@ export class SpotifyClient {
     }
 
     const addedUris = uris.filter((_, index) => !saved[index]);
-    if (addedUris.length > 0) {
+    if (addedUris.length > 0 && !dryRun) {
       const saveParams = new URLSearchParams({ uris: addedUris.join(',') });
       await this.request<void>(`/me/library?${saveParams.toString()}`, {
         method: 'PUT',
@@ -267,6 +282,7 @@ export class SpotifyClient {
     return {
       addedUris,
       alreadySavedUris: uris.filter((_, index) => saved[index]),
+      ...(dryRun ? { dryRun: true } : {}),
     };
   }
 

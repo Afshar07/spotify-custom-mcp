@@ -16,6 +16,30 @@ interface ITrackSummary {
   url?: string;
 }
 
+interface IPlaylistSummary {
+  playlistId: string;
+  totalItemCount: number;
+  snapshotId?: string;
+  tracks: IPlaylistTrackSummary[];
+}
+
+interface IPlaylistTrackSummary {
+  uri: string;
+  name: string;
+  artists: string[];
+}
+
+interface IPlaylistMutationPreview {
+  dryRun: true;
+  playlistId: string;
+  currentSnapshotId?: string;
+  operation: string;
+  requestedUris?: string[];
+  rangeStart?: number;
+  insertBefore?: number;
+  rangeLength?: number;
+}
+
 const spotify = new SpotifyClient(getSpotifyConfig());
 const server = new McpServer({
   name: 'spotify-playlist-mcp',
@@ -53,6 +77,47 @@ function summarizeTrack(track: ISpotifyTrack): ITrackSummary {
   };
 }
 
+function summarizePlaylistTrack(track: ISpotifyTrack): IPlaylistTrackSummary {
+  return {
+    uri: track.uri,
+    name: track.name,
+    artists: Array.isArray(track.artists) ? track.artists.map((artist) => artist.name) : [],
+  };
+}
+
+async function getPlaylistSummary(playlistId: string): Promise<IPlaylistSummary> {
+  const snapshotId = await spotify.getPlaylistSnapshot(playlistId);
+  const page = await spotify.getPlaylistItems(playlistId, { all: true });
+
+  return {
+    playlistId,
+    totalItemCount: page.total,
+    ...(snapshotId ? { snapshotId } : {}),
+    tracks: page.items
+      .map((playlistItem) => playlistItem.item)
+      .filter((track): track is ISpotifyTrack => Boolean(track))
+      .map(summarizePlaylistTrack),
+  };
+}
+
+async function getCurrentSnapshotId(
+  playlistId: string,
+  expectedSnapshotId: string | undefined,
+  mustRead: boolean,
+): Promise<string | undefined> {
+  if (!expectedSnapshotId && !mustRead) {
+    return undefined;
+  }
+
+  const currentSnapshotId = await spotify.getPlaylistSnapshot(playlistId);
+  if (expectedSnapshotId && currentSnapshotId !== expectedSnapshotId) {
+    throw new Error(
+      `Playlist snapshot mismatch. Expected ${expectedSnapshotId}, but current snapshot is ${currentSnapshotId ?? 'unavailable'}. No changes were made.`,
+    );
+  }
+  return currentSnapshotId;
+}
+
 server.registerTool(
   'search_tracks',
   {
@@ -66,6 +131,24 @@ server.registerTool(
     try {
       const tracks = await spotify.searchTracks(query, limit);
       return jsonResult(tracks.map(summarizeTrack));
+    } catch (error) {
+      return errorResult(error);
+    }
+  },
+);
+
+server.registerTool(
+  'get_playlist_summary',
+  {
+    description:
+      'Read a compact playlist summary with its current snapshot ID and track URIs, names, and artists for planning and deduplication.',
+    inputSchema: {
+      playlistId: z.string().min(1).describe('Spotify playlist ID, not the full URL'),
+    },
+  },
+  async ({ playlistId }) => {
+    try {
+      return jsonResult(await getPlaylistSummary(playlistId));
     } catch (error) {
       return errorResult(error);
     }
@@ -117,16 +200,92 @@ server.registerTool(
       playlistId: z.string().min(1),
       uris: z.array(z.string().min(1)).min(1).max(100),
       position: z.number().int().min(0).optional(),
+      expectedSnapshotId: z.string().min(1).optional(),
+      dryRun: z.boolean().default(false),
     },
   },
-  async ({ playlistId, uris, position }) => {
+  async ({ playlistId, uris, position, expectedSnapshotId, dryRun }) => {
     try {
+      const currentSnapshotId = await getCurrentSnapshotId(
+        playlistId,
+        expectedSnapshotId,
+        dryRun,
+      );
+      if (dryRun) {
+        const preview: IPlaylistMutationPreview = {
+          dryRun: true,
+          playlistId,
+          operation: 'add_playlist_items',
+          requestedUris: uris,
+          ...(currentSnapshotId ? { currentSnapshotId } : {}),
+        };
+        return jsonResult(preview);
+      }
       const result = await spotify.addPlaylistItems({
         playlistId,
         uris,
         position,
       });
       return jsonResult(result);
+    } catch (error) {
+      return errorResult(error);
+    }
+  },
+);
+
+server.registerTool(
+  'add_unique_playlist_items',
+  {
+    description:
+      'Preferred playlist-addition tool. Reads the current playlist, rejects stale expected snapshots, and adds only requested URIs not already present or duplicated in the request.',
+    inputSchema: {
+      playlistId: z.string().min(1),
+      uris: z.array(z.string().min(1)).min(1).max(100),
+      position: z.number().int().min(0).optional(),
+      expectedSnapshotId: z.string().min(1).optional(),
+      dryRun: z.boolean().default(false),
+    },
+  },
+  async ({ playlistId, uris, position, expectedSnapshotId, dryRun }) => {
+    try {
+      const playlist = await getPlaylistSummary(playlistId);
+      if (expectedSnapshotId && playlist.snapshotId !== expectedSnapshotId) {
+        throw new Error(
+          `Playlist snapshot mismatch. Expected ${expectedSnapshotId}, but current snapshot is ${playlist.snapshotId ?? 'unavailable'}. No changes were made.`,
+        );
+      }
+
+      const existingUris = new Set(playlist.tracks.map((track) => track.uri));
+      const requestedUris = new Set<string>();
+      const addedUris: string[] = [];
+      const skippedDuplicateUris: string[] = [];
+
+      for (const uri of uris) {
+        if (existingUris.has(uri) || requestedUris.has(uri)) {
+          skippedDuplicateUris.push(uri);
+        } else {
+          requestedUris.add(uri);
+          addedUris.push(uri);
+        }
+      }
+
+      if (dryRun || addedUris.length === 0) {
+        return jsonResult({
+          dryRun,
+          requestedUris: uris,
+          addedUris,
+          skippedDuplicateUris,
+          ...(playlist.snapshotId ? { resultingSnapshotId: playlist.snapshotId } : {}),
+        });
+      }
+
+      const result = await spotify.addPlaylistItems({ playlistId, uris: addedUris, position });
+      return jsonResult({
+        requestedUris: uris,
+        addedUris,
+        skippedDuplicateUris,
+        resultingSnapshotId: result.snapshot_id,
+      });
     } catch (error) {
       return errorResult(error);
     }
@@ -141,14 +300,33 @@ server.registerTool(
       playlistId: z.string().min(1),
       uris: z.array(z.string().min(1)).min(1).max(100),
       snapshotId: z.string().min(1).optional(),
+      expectedSnapshotId: z.string().min(1).optional(),
+      dryRun: z.boolean().default(false),
     },
   },
-  async ({ playlistId, uris, snapshotId }) => {
+  async ({ playlistId, uris, snapshotId, expectedSnapshotId, dryRun }) => {
     try {
+      if (snapshotId && expectedSnapshotId && snapshotId !== expectedSnapshotId) {
+        throw new Error('snapshotId and expectedSnapshotId must match when both are provided.');
+      }
+      const currentSnapshotId = await getCurrentSnapshotId(
+        playlistId,
+        expectedSnapshotId,
+        dryRun,
+      );
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          playlistId,
+          operation: 'remove_playlist_items',
+          requestedUris: uris,
+          ...(currentSnapshotId ? { currentSnapshotId } : {}),
+        } satisfies IPlaylistMutationPreview);
+      }
       const result = await spotify.removePlaylistItems({
         playlistId,
         uris,
-        snapshotId,
+        snapshotId: expectedSnapshotId ?? snapshotId,
       });
       return jsonResult(result);
     } catch (error) {
@@ -167,16 +345,45 @@ server.registerTool(
       insertBefore: z.number().int().min(0),
       rangeLength: z.number().int().min(1).optional(),
       snapshotId: z.string().min(1).optional(),
+      expectedSnapshotId: z.string().min(1).optional(),
+      dryRun: z.boolean().default(false),
     },
   },
-  async ({ playlistId, rangeStart, insertBefore, rangeLength, snapshotId }) => {
+  async ({
+    playlistId,
+    rangeStart,
+    insertBefore,
+    rangeLength,
+    snapshotId,
+    expectedSnapshotId,
+    dryRun,
+  }) => {
     try {
+      if (snapshotId && expectedSnapshotId && snapshotId !== expectedSnapshotId) {
+        throw new Error('snapshotId and expectedSnapshotId must match when both are provided.');
+      }
+      const currentSnapshotId = await getCurrentSnapshotId(
+        playlistId,
+        expectedSnapshotId,
+        dryRun,
+      );
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          playlistId,
+          operation: 'reorder_playlist_items',
+          rangeStart,
+          insertBefore,
+          ...(rangeLength !== undefined ? { rangeLength } : {}),
+          ...(currentSnapshotId ? { currentSnapshotId } : {}),
+        } satisfies IPlaylistMutationPreview);
+      }
       const result = await spotify.reorderPlaylistItems({
         playlistId,
         rangeStart,
         insertBefore,
         rangeLength,
-        snapshotId,
+        snapshotId: expectedSnapshotId ?? snapshotId,
       });
       return jsonResult(result);
     } catch (error) {
@@ -193,10 +400,26 @@ server.registerTool(
     inputSchema: {
       playlistId: z.string().min(1),
       uris: z.array(z.string().min(1)).max(100),
+      expectedSnapshotId: z.string().min(1).optional(),
+      dryRun: z.boolean().default(false),
     },
   },
-  async ({ playlistId, uris }) => {
+  async ({ playlistId, uris, expectedSnapshotId, dryRun }) => {
     try {
+      const currentSnapshotId = await getCurrentSnapshotId(
+        playlistId,
+        expectedSnapshotId,
+        dryRun,
+      );
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          playlistId,
+          operation: 'replace_playlist_items',
+          requestedUris: uris,
+          ...(currentSnapshotId ? { currentSnapshotId } : {}),
+        } satisfies IPlaylistMutationPreview);
+      }
       const result = await spotify.replacePlaylistItems({ playlistId, uris });
       return jsonResult(result);
     } catch (error) {
@@ -212,11 +435,12 @@ server.registerTool(
       'Check up to 40 Spotify track URIs against the current user\'s Liked Songs and save only those not already present.',
     inputSchema: {
       uris: z.array(z.string().regex(/^spotify:track:/)).min(1).max(40),
+      dryRun: z.boolean().default(false),
     },
   },
-  async ({ uris }) => {
+  async ({ uris, dryRun }) => {
     try {
-      return jsonResult(await spotify.addLikedTracksIfMissing(uris));
+      return jsonResult(await spotify.addLikedTracksIfMissing(uris, dryRun));
     } catch (error) {
       return errorResult(error);
     }

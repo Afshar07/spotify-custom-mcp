@@ -6,7 +6,9 @@ A tiny local MCP server for OpenCode that can read and modify existing Spotify p
 
 - `search_tracks`
 - `get_playlist_items`
+- `get_playlist_summary`
 - `add_playlist_items`
+- `add_unique_playlist_items` (preferred for ordinary additions)
 - `remove_playlist_items`
 - `reorder_playlist_items`
 - `replace_playlist_items`
@@ -103,7 +105,7 @@ Use spotify-playlists.
 
 Playlist ID: 21ozzAcXzU1nGhyikLky4M
 
-Read the whole playlist first. Find 15 tracks matching a dark, melodic, emotional modern-rock taste with strong vocals, hooks, atmosphere and some aggression. Do not add anything already present in the playlist. Search Spotify for exact tracks, then add the unique selections to the end of the existing playlist. Show me what you added.
+Read the playlist summary first. Find 15 tracks matching a dark, melodic, emotional modern-rock taste with strong vocals, hooks, atmosphere and some aggression. Search Spotify for exact tracks, then use `add_unique_playlist_items` to add the selections. Show me what you added and what was skipped as a duplicate.
 ```
 
 ## Safety notes
@@ -112,12 +114,28 @@ Read the whole playlist first. Find 15 tracks matching a dark, melodic, emotiona
 
 For ordinary recommendations, prefer this sequence:
 
-1. `get_playlist_items(all=true)`
+1. `get_playlist_summary`
 2. `search_tracks`
-3. deduplicate by Spotify URI
-4. `add_playlist_items`
+3. `add_unique_playlist_items`
 
 Spotify accepts a maximum of 100 playlist item mutations in one request.
+
+`add_unique_playlist_items` reads the playlist, deduplicates requested URIs against
+the playlist and within the request, and returns `requestedUris`, `addedUris`, and
+`skippedDuplicateUris`. It is the preferred addition tool; `add_playlist_items`
+remains available for explicit low-level additions.
+
+Playlist mutation tools accept an optional `expectedSnapshotId`. When supplied, the
+server reads the playlist snapshot first and aborts without changing anything if it
+does not match. Obtain this value from `get_playlist_summary` or a prior mutation.
+The remove and reorder tools retain their existing optional `snapshotId` for Spotify's
+native request guard.
+
+`add_playlist_items`, `add_unique_playlist_items`, `remove_playlist_items`,
+`reorder_playlist_items`, `replace_playlist_items`, and `add_liked_tracks` accept
+`dryRun: true`. A dry run validates input and performs the relevant reads but does
+not call a Spotify mutation endpoint; it returns a preview. In an
+`add_unique_playlist_items` dry run, `addedUris` means the URIs that would be added.
 
 ## Development
 
