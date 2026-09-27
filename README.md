@@ -1,4 +1,4 @@
-# Spotify Playlist MCP
+# Spotify Custom MCP
 
 A tiny local MCP server for OpenCode that can read and modify existing Spotify playlists.
 
@@ -83,8 +83,8 @@ Current OpenCode V2 local MCP shape:
     "servers": {
       "spotify-playlists": {
         "type": "local",
-        "command": ["node", "/absolute/path/spotify-playlist-mcp/dist/server.js"],
-        "cwd": "/absolute/path/spotify-playlist-mcp",
+        "command": ["node", "/absolute/path/spotify-custom-mcp/dist/server.js"],
+        "cwd": "/absolute/path/spotify-custom-mcp",
         "codemode": false
       }
     }
@@ -118,7 +118,7 @@ For ordinary recommendations, prefer this sequence:
 2. `search_tracks`
 3. `add_unique_playlist_items`
 
-Spotify accepts a maximum of 100 playlist item mutations in one request.
+Spotify accepts a maximum of 100 playlist item mutations in one request. Playlist mutation tools validate item URIs as `spotify:track:<id>` or `spotify:episode:<id>`; Liked Songs remains track-only.
 
 `add_unique_playlist_items` reads the playlist, deduplicates requested URIs against
 the playlist and within the request, and returns `requestedUris`, `addedUris`, and
