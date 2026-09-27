@@ -46,7 +46,9 @@ Spotify errors are converted to `Error` messages and returned through the MCP
 tool error result. Avoid adding logs that include Spotify response bodies
 without confirming that they cannot include secrets.
 
-A successful mutation returns only a snapshot ID. It does not prove a prior
-read is still current, prevent duplicates, or make a retry safe. Preserve the
-read-before-write workflow and use snapshots where the current API supports
-them.
+Low-level Spotify mutation endpoints do not inherently prevent duplicates and
+a successful mutation snapshot does not prove a prior read is still current or
+make a retry safe. For ordinary additions, prefer `add_unique_playlist_items`,
+which performs application-level duplicate prevention against both the current
+playlist and duplicate URIs in the request. Preserve snapshot checks when the
+decision depends on current playlist state.
