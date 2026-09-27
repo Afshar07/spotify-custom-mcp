@@ -1,5 +1,5 @@
 <!-- toolkit:sha256=0a5f9dd42e4da3ab373dd6fd1a382ecf4c4c1f80c0b20ad280bfbf9a68935f10 -->
-# spotify-playlist-mcp Workspace
+# spotify-custom-mcp Workspace
 
 ## Purpose
 
