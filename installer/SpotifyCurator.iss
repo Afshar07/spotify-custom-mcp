@@ -53,7 +53,7 @@ begin
     RemoveData := ExpandConstant('{param:REMOVEDATA|0}') = '1'
   else
     RemoveData := MsgBox(
-      'Also remove your saved Spotify sign-in and the Spotify Curator entry in OpenCode?' + #13#10#13#10 +
+      'Also remove your saved Spotify sign-in and the Spotify Curator entries in OpenCode and ChatGPT Desktop?' + #13#10#13#10 +
       'Choose No to keep them (for example, if you plan to reinstall).',
       mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDYES;
 end;
@@ -63,6 +63,6 @@ var
   ResultCode: Integer;
 begin
   if (CurUninstallStep = usUninstall) and RemoveData then
-    Exec(ExpandConstant('{app}\spotify-curator.exe'), 'cleanup --opencode --credentials --settings',
+    Exec(ExpandConstant('{app}\spotify-curator.exe'), 'cleanup --opencode --chatgpt --credentials --settings',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;

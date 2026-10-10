@@ -11,8 +11,9 @@ It is not a Spotify client application, hosted service, database-backed
 service, scheduler, or multi-user/public SaaS. There is no remote/HTTP
 transport and no external LLM integration. It also ships as a Windows
 installer (`spotify-curator.exe`, see `docs/windows-distribution.md`) with a
-local setup wizard; ChatGPT Desktop automatic setup is **unverified** and not
-implemented (`docs/chatgpt-desktop.md`). The
+local setup wizard; ChatGPT Desktop registration uses the officially documented
+shared desktop/Codex host TOML config (`docs/chatgpt-desktop.md`). Startup/tool
+discovery is verified separately from live desktop UI acceptance. The
 MCP client does the creative/taste reasoning; this server does deterministic
 validation, bookkeeping and statistics. Keep dependencies and abstractions
 small.
@@ -50,7 +51,7 @@ new installs use `src/auth/` (PKCE). Requested scopes live in `src/scopes.ts`.
 | `src/services/` | `playlist-items.ts` (normalization), `playlist-analysis.ts`, `playlist-comparison.ts`, `playlist-flow.ts`, `playlist-generation.ts`, `playlist-creation.ts`, `playlist-listing.ts` |
 | `src/utils/` | `uri.ts` (URI/ID schemas, dedupe, chunk), `pagination.ts` (`collectPages`) |
 | `src/auth/` | PKCE auth service (`spotify-auth-service.ts`), loopback listener, DPAPI `credential-store.ts`, `settings.ts`, `app-paths.ts`, `redact.ts` |
-| `src/clients/` | `IMcpClientAdapter` implementations: `opencode-adapter.ts` (JSONC-safe edits, backup/rollback), `chatgpt-adapter.ts` (unverified, manual only), `generic-config.ts`, `mcp-handshake.ts` |
+| `src/clients/` | `IMcpClientAdapter` implementations: `opencode-adapter.ts` (JSONC-safe edits, backup/rollback), `chatgpt-adapter.ts` (TOML-safe shared desktop/Codex config, backup/rollback), `generic-config.ts`, `mcp-handshake.ts` |
 | `src/setup/`, `src/diagnostics.ts`, `src/cli.ts` | setup wizard server + UI, diagnostics, CLI entry (`mcp`, `setup`, `doctor`, `cleanup`, ...) |
 | `scripts/build-exe.mjs`, `installer/`, `.github/workflows/` | Node SEA build, Inno Setup installer, Windows CI |
 | `src/tools/podcasts.ts`, `src/services/podcast-*.ts`, `src/models/podcast.ts` | podcast tools (7), see `mcp-tools.md` |
@@ -109,7 +110,7 @@ contains names only.
 - Named interfaces with the `I` prefix, enums with the `E` prefix, `T` for
   type aliases; avoid inline object types for reusable contracts. Keep changes
   compatible with NodeNext ESM and strict TypeScript.
-- Stack: native `fetch`, `@modelcontextprotocol/sdk`, Zod; Vitest for tests. No
+- Stack: native `fetch`, `@modelcontextprotocol/sdk`, Zod, `@decimalturn/toml-patch` for comment-preserving desktop config edits; Vitest for tests. No
   database.
 - Access tokens are cached in memory per process. With PKCE credentials a rotated
   refresh token is persisted to the secure store (and re-read if another process

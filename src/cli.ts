@@ -23,7 +23,8 @@ Usage: spotify-curator [command]
   connect               Connect Spotify from the command line
   disconnect            Remove the saved Spotify sign-in
   install-opencode      Register Spotify Curator in OpenCode (also repairs)
-  cleanup [--opencode] [--credentials] [--settings]
+  install-chatgpt       Register Spotify Curator in ChatGPT Desktop (also repairs)
+  cleanup [--opencode] [--chatgpt] [--credentials] [--settings]
                         Used by the uninstaller
   version
 `;
@@ -83,8 +84,9 @@ async function main(argv: string[]): Promise<number> {
       const settings = await app.settings();
       const auth = settings ? await app.authFor(settings).getStatus() : { state: 'not_configured' };
       const oc = await app.openCode.inspect(undefined, [app.executablePath, 'mcp']);
-      const report = { version: APP_VERSION, spotify: auth, opencode: { registered: oc.registered, upToDate: oc.upToDate, problems: oc.problems }, chatgpt: 'manual setup only (unverified)' };
-      print(report, `Spotify: ${auth.state}\nOpenCode: ${oc.registered && oc.upToDate ? 'ready' : 'needs setup'}\nChatGPT Desktop: manual setup only (unverified)`);
+      const gpt = await app.chatGpt.inspect();
+      const report = { version: APP_VERSION, spotify: auth, opencode: { registered: oc.registered, upToDate: oc.upToDate, problems: oc.problems }, chatgpt: { registered: gpt.registered, upToDate: gpt.upToDate, problems: gpt.problems } };
+      print(report, `Spotify: ${auth.state}\nOpenCode: ${oc.registered && oc.upToDate ? 'ready' : 'needs setup'}\nChatGPT Desktop: ${gpt.registered && gpt.upToDate ? 'configured (restart ChatGPT)' : 'needs setup'}`);
       return 0;
     }
     case 'doctor': {
@@ -116,14 +118,32 @@ async function main(argv: string[]): Promise<number> {
       print({ ...result, verified: verification.ok, toolCount: verification.toolCount }, verification.ok ? `OpenCode is ready (${verification.toolCount} tools).` : 'OpenCode was updated but verification failed. Run "doctor".');
       return verification.ok ? 0 : 1;
     }
+    case 'install-chatgpt': {
+      const result = await app.chatGpt.install({ executablePath: app.executablePath,
+        conflictPolicy: has('--disable-conflicts') ? EClientConflictPolicy.Disable : EClientConflictPolicy.Abort });
+      const verification = await app.chatGpt.verify();
+      print({ ...result, verified: verification.ok, toolCount: verification.toolCount }, verification.ok
+        ? `ChatGPT Desktop is configured (${verification.toolCount} tools). Restart ChatGPT and use /mcp in a local chat.`
+        : 'ChatGPT Desktop settings were updated but server startup failed. Run "doctor".');
+      return verification.ok ? 0 : 1;
+    }
     case 'cleanup': {
-      if (has('--opencode')) await app.openCode.uninstall();
-      if (has('--credentials')) await app.credentialStore().delete();
-      if (has('--settings')) {
-        await rm(join(app.dataDir, 'settings.json'), { force: true });
-        await rm(join(app.dataDir, 'backups'), { recursive: true, force: true });
+      let failed = false;
+      async function clean(label: string, action: () => Promise<void>): Promise<void> {
+        try { await action(); }
+        catch {
+          failed = true;
+          process.stderr.write(`Could not remove ${label}. Remove it manually; other requested cleanup continues.\n`);
+        }
       }
-      return 0;
+      if (has('--opencode')) await clean('the OpenCode entry', () => app.openCode.uninstall());
+      if (has('--chatgpt')) await clean('the ChatGPT Desktop entry', () => app.chatGpt.uninstall());
+      if (has('--credentials')) await clean('the saved Spotify sign-in', () => app.credentialStore().delete());
+      if (has('--settings')) {
+        await clean('Spotify Curator settings', () => rm(join(app.dataDir, 'settings.json'), { force: true }));
+        await clean('Spotify Curator backups', () => rm(join(app.dataDir, 'backups'), { recursive: true, force: true }));
+      }
+      return failed ? 1 : 0;
     }
     default:
       process.stderr.write(HELP);

@@ -4,6 +4,6 @@
 ## Purpose
 
 This workspace contains one private, local TypeScript MCP server for safely
-reading and changing Spotify playlist state from OpenCode.
+reading and changing Spotify playlist state from OpenCode and local ChatGPT Desktop MCP clients.
 
 Shared context belongs in this root. Project-specific implementation detail belongs in the owning project's local index.

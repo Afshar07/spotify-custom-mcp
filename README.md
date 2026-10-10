@@ -12,7 +12,7 @@ A local, stdio [MCP](https://modelcontextprotocol.io) server that lets an AI ass
 
 Install **Spotify Curator** with the Windows installer, then follow the setup wizard: enter your Spotify app's Client ID, connect Spotify in the browser (PKCE, no Client Secret), and set up **OpenCode** automatically. Your Spotify sign-in is stored encrypted for your Windows user only. See [docs/windows-distribution.md](docs/windows-distribution.md) for install steps, Spotify Development Mode limits, SmartScreen/signing notes and the release checklist.
 
-- **ChatGPT Desktop:** automatic setup is **unverified** and not implemented; a labelled manual path is shown instead. Details: [docs/chatgpt-desktop.md](docs/chatgpt-desktop.md).
+- **ChatGPT Desktop:** select it in Setup, then restart ChatGPT and use `/mcp` in a local chat. Registration uses the documented shared desktop/Codex configuration and checks STDIO startup/tool discovery; live desktop invocation remains a manual acceptance check. Details: [docs/chatgpt-desktop.md](docs/chatgpt-desktop.md).
 - Other MCP clients: use the copyable stdio config from the wizard (`spotify-curator.exe mcp`).
 - Developers: `npm run build:exe` builds the standalone executable; `npm run setup` runs the wizard from source. The sections below describe the developer / environment-variable setup, which still works.
 

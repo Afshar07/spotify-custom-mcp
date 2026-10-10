@@ -5,10 +5,10 @@
 1. Download `SpotifyCurator-Setup-<version>.exe` from the project's release/CI artifact and run it. It installs per user to `%LOCALAPPDATA%\Programs\SpotifyCurator`; no administrator rights are needed.
 2. Spotify Curator Setup opens in your browser (also in Start menu → *Spotify Curator Setup*).
 3. Create a free Spotify developer app (the wizard explains how), add `http://127.0.0.1:8888/callback` as its Redirect URI, add your Spotify account under *User management*, and paste the **Client ID** (no Client Secret is needed or stored).
-4. Choose **Connect Spotify**, approve in the browser, then choose **OpenCode** and **Set up selected apps**. Success is shown only after the program starts and lists its tools.
-5. Open OpenCode and ask: "Show me my Spotify playlists."
+4. Choose **Connect Spotify**, approve in the browser, then choose **OpenCode**, **ChatGPT Desktop**, or both and **Set up selected apps**. Registration succeeds only after the program starts and lists its tools.
+5. Restart the selected AI app and ask: "Show me my Spotify playlists." For ChatGPT Desktop use a local chat and `/mcp` to check connected servers.
 
-Upgrading: run a newer installer over the old one. Credentials and settings live in `%LOCALAPPDATA%\SpotifyCurator`, outside the install folder, so they are preserved. Uninstall asks whether to also remove the saved Spotify sign-in and the OpenCode entry (`/REMOVEDATA=1` for silent uninstalls).
+Upgrading: run a newer installer over the old one. Credentials and settings live in `%LOCALAPPDATA%\SpotifyCurator`, outside the install folder, so they are preserved. Uninstall asks whether to also remove the saved Spotify sign-in and the OpenCode and ChatGPT Desktop entries (`/REMOVEDATA=1` for silent uninstalls).
 
 ## Spotify restrictions that still apply
 
@@ -35,7 +35,7 @@ Upgrading: run a newer installer over the old one. Credentials and settings live
 ## Manual acceptance (clean Windows 11, no Node/Git) — status: NOT YET RUN
 
 - [ ] **A OpenCode:** install → connect → select OpenCode → open OpenCode → tools listed → list playlists → `generate_playlist` with `dryRun: true` creates nothing.
-- [ ] **B ChatGPT Desktop:** only via an officially documented mechanism; see `docs/chatgpt-desktop.md` (currently unverified).
+- [ ] **B ChatGPT Desktop:** install → connect → select ChatGPT Desktop → restart ChatGPT → `/mcp` in a local chat → tools listed → read-only search → confirm write approvals. Registration and STDIO checks are automated; desktop UI acceptance remains manual. See `docs/chatgpt-desktop.md`.
 - [ ] **C Repair:** edit/delete the `spotify-curator` entry in `~/.config/opencode/opencode.json(c)` → open Setup → Test connection shows the problem → Repair → Test passes.
 - [ ] **D Upgrade:** install N-1, connect, install N → still connected, OpenCode entry intact.
 - [ ] Confirm no console window flashes when OpenCode starts the MCP, and that `~/.config/opencode` is the file OpenCode actually reads on Windows (see `.ai/opencode-integration.md`).

@@ -28,7 +28,7 @@ export class AppContext {
   public readonly executablePath: string;
   public readonly version = APP_VERSION;
   public readonly openCode: OpenCodeAdapter;
-  public readonly chatGpt = new ChatGptDesktopAdapter();
+  public readonly chatGpt: ChatGptDesktopAdapter;
   public readonly handshake: (command: string[]) => Promise<IMcpHandshakeResult>;
   private readonly store: ICredentialStore;
 
@@ -37,6 +37,10 @@ export class AppContext {
     this.dataDir = getDataDir(this.env);
     this.executablePath = options.executablePath ?? this.env.SPOTIFY_CURATOR_EXE ?? process.execPath;
     this.handshake = options.handshake ?? ((command) => performMcpHandshake(command));
+    this.chatGpt = new ChatGptDesktopAdapter({
+      env: this.env, home: options.home, backupDir: join(this.dataDir, 'backups'),
+      expectedCommand: [this.executablePath, 'mcp'], handshake: this.handshake,
+    });
     const path = join(this.dataDir, CREDENTIALS_FILE);
     this.store = (options.createStore ?? createDefaultCredentialStore)(path);
     this.openCode = new OpenCodeAdapter({

@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'jsonc-parser';
-import { ChatGptDesktopAdapter, ManualSetupRequiredError } from '../../src/clients/chatgpt-adapter.js';
 import { buildGenericStdioConfig } from '../../src/clients/generic-config.js';
 import { OpenCodeAdapter } from '../../src/clients/opencode-adapter.js';
 import { EClientConflictPolicy, EClientDetection } from '../../src/models/client-adapter.js';
@@ -179,18 +178,7 @@ describe('OpenCodeAdapter inspect / repair / uninstall / verify', () => {
   });
 });
 
-describe('ChatGPT Desktop adapter (unverified)', () => {
-  it('never installs silently and explains the manual path', async () => {
-    const adapter = new ChatGptDesktopAdapter();
-    const error = await adapter.install({ executablePath: EXE }).catch((e) => e);
-    expect(error).toBeInstanceOf(ManualSetupRequiredError);
-    expect(error.steps.join('\n')).toContain(EXE);
-    expect(error.steps.join('\n')).toMatch(/unverified/i);
-    expect((await adapter.verify()).ok).toBe(false);
-    expect((await adapter.detect()).support).toBe('unverified');
-    await expect(adapter.uninstall()).resolves.toBeUndefined();
-  });
-
+describe('Generic MCP configuration', () => {
   it('generic fallback config uses stdio with the mcp argument', () => {
     expect(JSON.parse(buildGenericStdioConfig(EXE)).mcpServers['spotify-curator']).toEqual({ command: EXE, args: ['mcp'] });
   });

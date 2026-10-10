@@ -16,6 +16,7 @@
     "cli": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@decimalturn/toml-patch": "^3.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
     "jsonc-parser": "^3.3.1",

@@ -95,11 +95,14 @@ describe('setup server flow (mock Spotify, mock handshake)', () => {
     expect(store.value).toBeNull();
   });
 
-  it('installs into OpenCode and reports verified only after the handshake; ChatGPT stays manual', async () => {
+  it('registers both local desktop clients and reports verified only after the handshake', async () => {
     const { call, root } = await boot();
     const result = await (await call('/api/install', { clients: ['opencode', 'chatgpt-desktop'] })).json();
     expect(result.opencode).toMatchObject({ installed: true, verified: true, toolCount: 3 });
-    expect(result['chatgpt-desktop']).toMatchObject({ installed: false, verified: false, manual: true });
+    expect(result['chatgpt-desktop']).toMatchObject({ installed: true, verified: true, toolCount: 3 });
+    const desktop = await readFile(join(root, '.codex', 'config.toml'), 'utf8');
+    expect(desktop).toContain('spotify-curator');
+    expect(JSON.stringify((await (await call('/api/state')).json()).clients)).not.toMatch(/unverified/i);
     const config = JSON.parse(await readFile(join(root, 'cfg', 'opencode', 'opencode.json'), 'utf8'));
     expect(config.mcp['spotify-curator'].command).toEqual([EXE, 'mcp']);
     expect(JSON.stringify(config)).not.toMatch(/token|secret/i);
@@ -109,20 +112,21 @@ describe('setup server flow (mock Spotify, mock handshake)', () => {
     const { call } = await boot(async () => {
       throw new Error('spawn ENOENT');
     });
-    const result = await (await call('/api/install', { clients: ['opencode'] })).json();
+    const result = await (await call('/api/install', { clients: ['opencode', 'chatgpt-desktop'] })).json();
     expect(result.opencode).toMatchObject({ installed: true, verified: false });
+    expect(result['chatgpt-desktop']).toMatchObject({ installed: true, verified: false });
   });
 
   it('runs diagnostics where registration passes but missing Spotify auth is still a failure', async () => {
     const { call } = await boot();
-    await call('/api/install', { clients: ['opencode'] });
+    await call('/api/install', { clients: ['opencode', 'chatgpt-desktop'] });
     const report = await (await call('/api/diagnostics', {})).json();
     const byId = Object.fromEntries(report.checks.map((c: any) => [c.id, c]));
     expect(byId.opencode.status).toBe('pass');
     expect(byId.credentials.status).toBe('fail');
     expect(byId.refresh.status).toBe('skipped');
     expect(byId['spotify-api'].status).toBe('skipped');
-    expect(byId.chatgpt.status).toBe('skipped');
+    expect(byId.chatgpt.status).toBe('pass');
     expect(report.ok).toBe(false);
   });
 

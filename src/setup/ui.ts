@@ -143,7 +143,7 @@ function renderClients(){
   data.clients.forEach(function(c){
     var card=el('div',null,'card');var row=el('label',null,'client');row.style.fontWeight='400';
     var cb=document.createElement('input');cb.type='checkbox';cb.id='client-'+c.id;cb.value=c.id;
-    cb.checked=c.id==='opencode';row.appendChild(cb);
+    cb.checked=c.registered||(!data.clients.some(function(client){return client.registered})&&c.id==='opencode');row.appendChild(cb);
     var txt=el('div');txt.appendChild(el('b',c.name));
     var tag=c.support==='supported'?'Automatic setup':'Manual setup only (not verified)';
     txt.appendChild(el('div',tag,c.support==='supported'?'ok':'warn'));
@@ -185,7 +185,11 @@ $('install').onclick=function(){
       else if(o.installed)status(box,false,'OpenCode was updated, but the check failed',(o.checks||[]).filter(function(c){return !c.ok}).map(function(c){return c.detail}).join(' ')+' Use Repair on the next screen.');
       else status(box,false,'OpenCode could not be set up',o.message);
     }
-    var g=r['chatgpt-desktop'];if(g){status(box,null,'ChatGPT Desktop needs a manual step','Automatic setup is not verified for ChatGPT Desktop yet.');var ol=el('ol');(g.steps||[]).forEach(function(t){ol.appendChild(el('li',t))});box.appendChild(ol)}
+    var g=r['chatgpt-desktop'];if(g){
+      if(g.verified)status(box,true,'ChatGPT Desktop is configured','Spotify Curator started and listed '+g.toolCount+' tools. Restart ChatGPT, then use /mcp in a local chat.');
+      else if(g.installed)status(box,false,'ChatGPT Desktop was updated, but the check failed',(g.checks||[]).filter(function(c){return !c.ok}).map(function(c){return c.detail}).join(' '));
+      else {status(box,false,'ChatGPT Desktop could not be set up',g.message);var ol=el('ol');(g.steps||[]).forEach(function(t){ol.appendChild(el('li',t))});box.appendChild(ol)}
+    }
     $('next5').hidden=false;
   }).catch(function(e){box.textContent='';status(box,false,'Setup failed',e.message);$('next5').hidden=false});
 };
@@ -197,7 +201,8 @@ function loadReady(){
       status(box,data.auth.state==='connected','Spotify: '+(data.auth.state==='connected'?'connected'+(data.auth.account&&data.auth.account.displayName?' as '+data.auth.account.displayName:''):'not connected'));
       var oc=r.checks.filter(function(c){return c.id==='opencode'})[0];
       status(box,oc.status==='pass','OpenCode: '+(oc.status==='pass'?'ready':'needs attention'),oc.status==='pass'?null:oc.detail);
-      status(box,null,'ChatGPT Desktop: manual setup only (not verified)');
+      var gpt=r.checks.filter(function(c){return c.id==='chatgpt'})[0];
+      status(box,gpt.status==='pass','ChatGPT Desktop: '+(gpt.status==='pass'?'configured':'needs attention'),gpt.detail);
       status(box,r.toolCount?true:false,'Spotify Curator '+data.version+(r.toolCount?' — '+r.toolCount+' tools available':''));
     });
   }).catch(function(e){box.textContent=e.message});
@@ -211,7 +216,8 @@ $('test').onclick=function(){
 };
 $('repair').onclick=function(){
   var b=$('repair');b.disabled=true;say('Repairing…');
-  api('/api/repair',{}).then(function(r){say(r.ok?'Repaired. Run "Test connection" to confirm.':r.message)}).catch(function(e){say(e.message)}).then(function(){b.disabled=false;loadReady()});
+  var clients=selected();if(!clients.length)clients=['opencode'];
+  Promise.all(clients.map(function(client){return api('/api/repair',{client:client})})).then(function(results){var failed=results.filter(function(r){return !r.ok});say(failed.length?failed.map(function(r){return r.message}).join(' '):'Repaired. Run "Test connection" to confirm.')}).catch(function(e){say(e.message)}).then(function(){b.disabled=false;loadReady()});
 };
 $('disconnect').onclick=function(){
   if(!confirm('Disconnect Spotify? Your saved sign-in will be removed from this PC.'))return;
@@ -219,7 +225,7 @@ $('disconnect').onclick=function(){
 };
 document.querySelectorAll('[data-next]').forEach(function(b){b.addEventListener('click',function(){if(step===4)return;if(step===1)renderOverview();show(Math.min(6,step+1));if(step===4)renderClients()})});
 document.querySelectorAll('[data-back]').forEach(function(b){b.addEventListener('click',function(){show(Math.max(1,step-1));if(step===4)renderClients()})});
-load().then(function(){renderOverview();renderSteps();if(data.auth.state==='connected'&&data.clients[0].registered)show(6)}).catch(function(e){say(e.message)});
+load().then(function(){renderOverview();renderClients();renderSteps();if(data.auth.state==='connected'&&data.clients.some(function(c){return c.registered}))show(6)}).catch(function(e){say(e.message)});
 })();
 </script>
 </body>

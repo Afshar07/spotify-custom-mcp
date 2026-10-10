@@ -4,7 +4,6 @@ import { AuthError } from '../auth/auth-error.js';
 import { saveSettings } from '../auth/settings.js';
 import { DEFAULT_REDIRECT_PORT, isPlausibleClientId, type SpotifyAuthService } from '../auth/spotify-auth-service.js';
 import { runDiagnostics } from '../diagnostics.js';
-import { ManualSetupRequiredError } from '../clients/chatgpt-adapter.js';
 import { buildGenericStdioConfig } from '../clients/generic-config.js';
 import { EAuthErrorCode, EAuthState, type IConnectedAccount } from '../models/auth.js';
 import { EClientConflictPolicy } from '../models/client-adapter.js';
@@ -67,7 +66,7 @@ export async function startSetupServer(app: AppContext, options: { port?: number
       auth: status,
       clients: [
         { id: 'opencode', name: 'OpenCode', ...oc, registered: ocConfig.registered, upToDate: ocConfig.upToDate, conflicts: ocConfig.conflicts, problems: ocConfig.problems, valid: ocConfig.valid },
-        { id: 'chatgpt-desktop', name: 'ChatGPT Desktop', ...gpt, manualSteps: app.chatGpt.manualSteps(app.executablePath) },
+        { id: 'chatgpt-desktop', name: 'ChatGPT Desktop', ...gpt, ...(await app.chatGpt.inspect()), manualSteps: app.chatGpt.manualSteps(app.executablePath) },
       ],
       genericConfig: buildGenericStdioConfig(app.executablePath),
     };
@@ -137,16 +136,22 @@ export async function startSetupServer(app: AppContext, options: { port?: number
         }
         if (clients.includes('chatgpt-desktop')) {
           try {
-            await app.chatGpt.install({ executablePath: app.executablePath });
+            const install = await app.chatGpt.install({ executablePath: app.executablePath,
+              conflictPolicy: body.disableConflicts ? EClientConflictPolicy.Disable : EClientConflictPolicy.Abort });
+            const verification = await app.chatGpt.verify();
+            results['chatgpt-desktop'] = { installed: true, changed: install.changed, verified: verification.ok,
+              toolCount: verification.toolCount, checks: verification.checks, disabledConflicts: install.disabledConflicts };
           } catch (error) {
-            results['chatgpt-desktop'] = { installed: false, verified: false, manual: true, steps: error instanceof ManualSetupRequiredError ? error.steps : [], message: (error as Error).message };
+            results['chatgpt-desktop'] = { installed: false, verified: false, manual: true,
+              steps: app.chatGpt.manualSteps(app.executablePath), message: (error as Error).message };
           }
         }
         return json(response, 200, results);
       }
       case '/api/repair': {
         try {
-          await app.openCode.install({ executablePath: app.executablePath, conflictPolicy: EClientConflictPolicy.Disable });
+          const client = body.client === 'chatgpt-desktop' ? app.chatGpt : app.openCode;
+          await client.install({ executablePath: app.executablePath, conflictPolicy: EClientConflictPolicy.Disable });
           return json(response, 200, { ok: true });
         } catch (error) {
           return json(response, 200, { ok: false, message: (error as Error).message });

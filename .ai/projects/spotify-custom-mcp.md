@@ -4,7 +4,7 @@
 ## Scope
 
 Private local utility that exposes selected Spotify Web API operations as MCP
-tools for OpenCode. It has no database, web UI, multi-user service, or public
+tools for OpenCode and local ChatGPT Desktop MCP clients. It has no database, multi-user service, or public
 SaaS boundary.
 
 ## Ownership boundaries

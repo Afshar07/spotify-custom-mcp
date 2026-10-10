@@ -13,7 +13,7 @@ step 7, then follow the route exactly in order.
 | `spotify-integration.md` | changing Spotify requests, OAuth, token handling, paging, or playlist mutations |
 | `opencode-integration.md` | changing local OpenCode MCP setup or runtime behavior |
 | `../docs/windows-distribution.md` | changing the installer, packaging, release or acceptance process |
-| `../docs/chatgpt-desktop.md` | touching ChatGPT Desktop support (status: unverified) |
+| `../docs/chatgpt-desktop.md` | touching local ChatGPT Desktop registration, verification, or manual acceptance |
 | `ongoing/README.md` | continuing an in-progress task; read only the matching task document |
 
 ## Rules
@@ -29,5 +29,6 @@ step 7, then follow the route exactly in order.
 - MCP tool or response change: `project-overview.md` → `mcp-tools.md` → `spotify-integration.md` → `src/tools/*` → `src/services/*` → `src/spotify.ts`.
 - Spotify API, authentication, or mutation change: `project-overview.md` → `spotify-integration.md` → `src/config.ts` / `src/scopes.ts` / `src/authorize.ts` / `src/spotify.ts`.
 - OpenCode setup change: `project-overview.md` → `opencode-integration.md` → `opencode.example.jsonc` → `README.md`.
+- ChatGPT Desktop setup change: `project-overview.md` → `../docs/chatgpt-desktop.md` → `../docs/windows-distribution.md` → `src/clients/chatgpt-adapter.ts` / `src/setup/` / `src/cli.ts`.
 - Installer, packaging or setup wizard change: `project-overview.md` → `../docs/windows-distribution.md` → `scripts/build-exe.mjs` / `installer/` / `src/setup/` / `src/clients/`.
 - Route format: `README.md` (this file) → optional domain context → source. Inspect an exact user-named source file first.
