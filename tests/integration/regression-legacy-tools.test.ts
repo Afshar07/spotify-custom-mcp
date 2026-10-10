@@ -290,7 +290,7 @@ describe('OpenCode configuration', () => {
 
   it.each(['opencode.example.jsonc', 'opencode.jsonc'])('%s still defines the local stdio server', (file) => {
     const config = parseJsonc(file);
-    const server = config.mcp.servers['spotify-playlists'];
+    const server = config.mcp['spotify-playlists']; // documented shape: mcp.<name>, not mcp.servers.<name>
     expect(server.type).toBe('local');
     expect(server.command[0]).toBe('node');
     expect(server.command[1]).toMatch(/dist[\\/]server\.js$/);

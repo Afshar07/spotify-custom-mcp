@@ -1,0 +1,65 @@
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run typecheck:tests
+      - name: Unit and integration tests
+        run: npm test
+      - name: Build standalone executable (Node SEA)
+        run: npm run build:exe
+      - name: Standalone runtime tests (real Windows exe, no Node on PATH)
+        run: npm test -- tests/runtime
+        env:
+          REQUIRE_STANDALONE: '1'
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer\SpotifyCurator.iss
+          Get-FileHash dist-installer\*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist-installer\SHA256SUMS.txt
+      - name: Installer smoke test (silent per-user install, doctor, uninstall)
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist-installer\SpotifyCurator-Setup-*.exe | Select-Object -First 1
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\SpotifyCurator'
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NORUN | Out-Null
+          if (-not (Test-Path "$dir\spotify-curator.exe")) { throw 'Install failed' }
+          # Upgrade in place: same installer again must succeed and keep the data folder.
+          New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\SpotifyCurator" | Out-Null
+          Set-Content "$env:LOCALAPPDATA\SpotifyCurator\marker.txt" 'keep'
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NORUN | Out-Null
+          if (-not (Test-Path "$env:LOCALAPPDATA\SpotifyCurator\marker.txt")) { throw 'Upgrade removed user data' }
+          & "$dir\spotify-curator.exe" version
+          # doctor is expected to report 'not connected' (exit 1) but must not crash.
+          & "$dir\spotify-curator.exe" doctor --json | Out-Host
+          $unins = Get-ChildItem "$dir\unins*.exe" | Select-Object -First 1
+          & $unins.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART | Out-Null
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\spotify-curator.exe") { throw 'Uninstall left the program behind' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpotifyCurator-installer
+          path: |
+            dist-installer/*.exe
+            dist-installer/SHA256SUMS.txt
+          if-no-files-found: error

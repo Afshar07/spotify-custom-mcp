@@ -1,4 +1,5 @@
 import type { ISpotifyConfig } from './config.js';
+import type { ITokenProvider } from './models/auth.js';
 import type {
   IAddLikedTracksResult,
   IAddPlaylistItemsOptions,
@@ -75,7 +76,7 @@ export class SpotifyApiError extends Error {
 export class SpotifyScopeError extends Error {
   public constructor(public readonly missingScopes: string[]) {
     super(
-      `Missing Spotify OAuth scope(s): ${missingScopes.join(', ')}. Re-run \`npm run auth\` and update SPOTIFY_REFRESH_TOKEN. No request was sent.`,
+      `Missing Spotify OAuth scope(s): ${missingScopes.join(', ')}. Reconnect Spotify in Spotify Curator Setup (or re-run \`npm run auth\` for an env-based install). No request was sent.`,
     );
     this.name = 'SpotifyScopeError';
   }
@@ -95,6 +96,7 @@ export class SpotifyClient {
   private grantedScopes: Set<string> | null = null;
   private currentUser: ISpotifyCurrentUser | null = null;
   private readonly fetchImpl: typeof fetch;
+  private readonly tokenProvider: ITokenProvider | null;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly timeoutMs: number;
   private readonly maxRateLimitRetries: number;
@@ -106,6 +108,7 @@ export class SpotifyClient {
     options: ISpotifyClientOptions = {},
   ) {
     this.fetchImpl = options.fetch ?? fetch;
+    this.tokenProvider = options.tokenProvider ?? null;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxRateLimitRetries = options.maxRateLimitRetries ?? DEFAULT_MAX_RATE_LIMIT_RETRIES;
@@ -664,6 +667,14 @@ export class SpotifyClient {
     const now = Date.now();
     if (this.accessToken && now < this.accessTokenExpiresAt - 30_000) {
       return this.accessToken;
+    }
+
+    if (this.tokenProvider) {
+      const grant = await this.tokenProvider.getAccessToken();
+      this.accessToken = grant.accessToken;
+      this.accessTokenExpiresAt = Date.now() + grant.expiresInSeconds * 1000;
+      this.grantedScopes = grant.scopes ? new Set(grant.scopes) : null;
+      return grant.accessToken;
     }
 
     const form = new URLSearchParams({
