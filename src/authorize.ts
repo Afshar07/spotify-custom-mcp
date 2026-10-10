@@ -3,16 +3,11 @@ import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { URL } from 'node:url';
 import { getSpotifyAuthConfig } from './config.js';
-import type { ISpotifyTokenResponse } from './spotify.js';
+import type { ISpotifyTokenResponse } from './models/spotify.js';
+import { REQUESTED_SCOPES } from './scopes.js';
 
 const SPOTIFY_AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const SCOPES = [
-  'playlist-modify-public',
-  'playlist-modify-private',
-  'user-library-read',
-  'user-library-modify',
-];
 
 interface ICallbackResult {
   code: string;
@@ -32,7 +27,7 @@ const authUrl = new URL(SPOTIFY_AUTHORIZE_URL);
 authUrl.search = new URLSearchParams({
   response_type: 'code',
   client_id: config.clientId,
-  scope: SCOPES.join(' '),
+  scope: REQUESTED_SCOPES.join(' '),
   redirect_uri: config.redirectUri,
   state,
 }).toString();

@@ -24,7 +24,7 @@ step 7, then follow the route exactly in order.
 
 - Continuing in-progress work: `ongoing/README.md` → only the matching task document → source.
 - General implementation: `project-overview.md` → source.
-- MCP tool or response change: `project-overview.md` → `mcp-tools.md` → `spotify-integration.md` → `src/server.ts` → `src/spotify.ts`.
-- Spotify API, authentication, or mutation change: `project-overview.md` → `spotify-integration.md` → `src/config.ts` / `src/authorize.ts` / `src/spotify.ts`.
+- MCP tool or response change: `project-overview.md` → `mcp-tools.md` → `spotify-integration.md` → `src/tools/*` → `src/services/*` → `src/spotify.ts`.
+- Spotify API, authentication, or mutation change: `project-overview.md` → `spotify-integration.md` → `src/config.ts` / `src/scopes.ts` / `src/authorize.ts` / `src/spotify.ts`.
 - OpenCode setup change: `project-overview.md` → `opencode-integration.md` → `opencode.example.jsonc` → `README.md`.
-- Route format: `local-context.md` → optional domain context → source. Inspect an exact user-named source file first.
+- Route format: `README.md` (this file) → optional domain context → source. Inspect an exact user-named source file first.

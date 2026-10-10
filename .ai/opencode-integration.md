@@ -24,5 +24,5 @@ credentials in the OpenCode config. Run `opencode mcp list` after configuration
 to verify discovery.
 
 The server process communicates MCP exclusively on stdin/stdout. Do not add
-startup banners, debug `console.log`, or other stdout output to `src/server.ts`;
-use stderr for diagnostics. For routine playlist work, direct agents to read the playlist summary, search exact tracks, then use `add_unique_playlist_items` so duplicate prevention is enforced by the MCP tool.
+startup banners, debug `console.log`, or other stdout output anywhere in `src/` (except `src/authorize.ts`);
+use stderr for diagnostics. For routine playlist work, direct agents to read the playlist summary, search exact tracks, then use `add_unique_playlist_items` so duplicate prevention is enforced by the MCP tool. For new playlists, prefer `generate_playlist` (dry run first). After scope changes users must re-run `npm run auth`; `SPOTIFY_DISABLED_TOOLS` can hide tools.

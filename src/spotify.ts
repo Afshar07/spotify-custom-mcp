@@ -1,134 +1,112 @@
 import type { ISpotifyConfig } from './config.js';
+import type {
+  IAddLikedTracksResult,
+  IAddPlaylistItemsOptions,
+  ICreatePlaylistOptions,
+  IGetAlbumTracksOptions,
+  IGetArtistAlbumsOptions,
+  IGetPlaylistItemsOptions,
+  IGetRecentlyPlayedOptions,
+  IPageOptions,
+  IRemovePlaylistItemsOptions,
+  IReorderPlaylistItemsOptions,
+  IReplacePlaylistItemsOptions,
+  ISpotifyAlbum,
+  ISpotifyArtist,
+  ISpotifyClientOptions,
+  ISpotifyCurrentUser,
+  ISpotifyCursorPaging,
+  ISpotifyErrorBody,
+  ISpotifyPaging,
+  ISpotifyPlayHistory,
+  ISpotifyPlaylist,
+  ISpotifyPlaylistItem,
+  ISpotifyPlaylistSnapshot,
+  ISpotifyRequestOptions,
+  ISpotifySavedTrack,
+  ISpotifyScopeRequirement,
+  ISpotifySearchResponse,
+  ISpotifySimplifiedTrack,
+  ISpotifySnapshotResponse,
+  ISpotifyTokenResponse,
+  ISpotifyTrack,
+  IUpdatePlaylistDetailsOptions,
+} from './models/spotify.js';
+import {
+  SCOPE_LIBRARY_READ,
+  SCOPE_PLAYLIST_MODIFY_PRIVATE,
+  SCOPE_PLAYLIST_MODIFY_PUBLIC,
+  SCOPE_PLAYLIST_READ_PRIVATE,
+  SCOPE_RECENTLY_PLAYED,
+  SCOPE_TOP_READ,
+} from './scopes.js';
+import { collectPages } from './utils/pagination.js';
+
+export type * from './models/spotify.js';
 
 const SPOTIFY_API_BASE_URL = 'https://api.spotify.com/v1';
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_MAX_RETRY_AFTER_SECONDS = 30;
+const DEFAULT_MAX_SERVER_ERROR_RETRIES = 2;
+/** Spotify caps playlists at 10,000 items; this bounds an `all` read defensively. */
+const MAX_ALL_PLAYLIST_ITEMS = 11_000;
 
-export interface ISpotifyTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token?: string;
-  scope?: string;
+export class SpotifyApiError extends Error {
+  public constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(`Spotify API ${status}: ${message}`);
+    this.name = 'SpotifyApiError';
+  }
 }
 
-export interface ISpotifyImage {
-  url: string;
-  height: number | null;
-  width: number | null;
+export class SpotifyScopeError extends Error {
+  public constructor(public readonly missingScopes: string[]) {
+    super(
+      `Missing Spotify OAuth scope(s): ${missingScopes.join(', ')}. Re-run \`npm run auth\` and update SPOTIFY_REFRESH_TOKEN. No request was sent.`,
+    );
+    this.name = 'SpotifyScopeError';
+  }
 }
 
-export interface ISpotifyArtist {
-  id: string;
-  name: string;
-  uri: string;
-}
-
-export interface ISpotifyAlbum {
-  id: string;
-  name: string;
-  uri: string;
-  images?: ISpotifyImage[];
-}
-
-export interface ISpotifyTrack {
-  id: string;
-  name: string;
-  uri: string;
-  duration_ms: number;
-  explicit: boolean;
-  artists: ISpotifyArtist[];
-  album: ISpotifyAlbum;
-  external_urls?: Record<string, string>;
-}
-
-export interface ISpotifyPlaylistItem {
-  added_at?: string | null;
-  item?: ISpotifyTrack | null;
-}
-
-export interface ISpotifyPaging<TItem> {
-  href: string;
-  items: TItem[];
-  limit: number;
-  next: string | null;
-  offset: number;
-  previous: string | null;
-  total: number;
-}
-
-export interface ISpotifySnapshotResponse {
-  snapshot_id: string;
-}
-
-export interface ISpotifyPlaylistSnapshot {
-  snapshot_id?: string;
-}
-
-export interface ISpotifySearchResponse {
-  tracks?: ISpotifyPaging<ISpotifyTrack>;
-}
-
-export interface ISpotifyErrorBody {
-  error?: {
-    status?: number;
-    message?: string;
-  };
-  error_description?: string;
-}
-
-export interface ISpotifyRequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  body?: unknown;
-}
-
-export interface IGetPlaylistItemsOptions {
-  limit?: number;
-  offset?: number;
-  all?: boolean;
-}
-
-export interface IAddPlaylistItemsOptions {
-  playlistId: string;
-  uris: string[];
-  position?: number;
-}
-
-export interface IRemovePlaylistItemsOptions {
-  playlistId: string;
-  uris: string[];
-  snapshotId?: string;
-}
-
-export interface IReorderPlaylistItemsOptions {
-  playlistId: string;
-  rangeStart: number;
-  insertBefore: number;
-  rangeLength?: number;
-  snapshotId?: string;
-}
-
-export interface IReplacePlaylistItemsOptions {
-  playlistId: string;
-  uris: string[];
-}
-
-export interface IAddLikedTracksResult {
-  addedUris: string[];
-  alreadySavedUris: string[];
-  dryRun?: boolean;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 export class SpotifyClient {
   private accessToken: string | null = null;
   private accessTokenExpiresAt = 0;
+  private grantedScopes: Set<string> | null = null;
+  private currentUser: ISpotifyCurrentUser | null = null;
+  private readonly fetchImpl: typeof fetch;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly timeoutMs: number;
+  private readonly maxRateLimitRetries: number;
+  private readonly maxRetryAfterSeconds: number;
+  private readonly maxServerErrorRetries: number;
 
-  public constructor(private readonly config: ISpotifyConfig) {}
+  public constructor(
+    private readonly config: ISpotifyConfig,
+    options: ISpotifyClientOptions = {},
+  ) {
+    this.fetchImpl = options.fetch ?? fetch;
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.maxRateLimitRetries = options.maxRateLimitRetries ?? DEFAULT_MAX_RATE_LIMIT_RETRIES;
+    this.maxRetryAfterSeconds = options.maxRetryAfterSeconds ?? DEFAULT_MAX_RETRY_AFTER_SECONDS;
+    this.maxServerErrorRetries = options.maxServerErrorRetries ?? DEFAULT_MAX_SERVER_ERROR_RETRIES;
+  }
+
+  // ---- Search -----------------------------------------------------------
 
   public async searchTracks(query: string, limit = 10): Promise<ISpotifyTrack[]> {
     const params = new URLSearchParams({
       q: query,
       type: 'track',
-      limit: String(Math.min(Math.max(limit, 1), 10)),
+      limit: String(clamp(limit, 1, 10)),
     });
 
     const result = await this.request<ISpotifySearchResponse>(
@@ -138,45 +116,41 @@ export class SpotifyClient {
     return result.tracks?.items ?? [];
   }
 
+  public async getTrack(trackId: string): Promise<ISpotifyTrack> {
+    return this.request<ISpotifyTrack>(`/tracks/${encodeURIComponent(trackId)}`);
+  }
+
+  // ---- Playlists: reads -------------------------------------------------
+
   public async getPlaylistItems(
     playlistId: string,
     options: IGetPlaylistItemsOptions = {},
   ): Promise<ISpotifyPaging<ISpotifyPlaylistItem>> {
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 100);
+    const limit = clamp(options.limit ?? 100, 1, 100);
     const offset = Math.max(options.offset ?? 0, 0);
+    const fetchPage = (pageOffset: number, pageLimit: number) =>
+      this.request<ISpotifyPaging<ISpotifyPlaylistItem>>(
+        `/playlists/${encodeURIComponent(playlistId)}/items?limit=${pageLimit}&offset=${pageOffset}`,
+      );
 
     if (!options.all) {
-      return this.request<ISpotifyPaging<ISpotifyPlaylistItem>>(
-        `/playlists/${encodeURIComponent(playlistId)}/items?limit=${limit}&offset=${offset}`,
-      );
+      return fetchPage(offset, limit);
     }
 
-    const allItems: ISpotifyPlaylistItem[] = [];
-    let currentOffset = offset;
-    let lastPage: ISpotifyPaging<ISpotifyPlaylistItem> | null = null;
-
-    do {
-      lastPage = await this.request<ISpotifyPaging<ISpotifyPlaylistItem>>(
-        `/playlists/${encodeURIComponent(playlistId)}/items?limit=${limit}&offset=${currentOffset}`,
-      );
-      allItems.push(...lastPage.items);
-      currentOffset += lastPage.items.length;
-    } while (lastPage.next);
+    const collected = await collectPages(fetchPage, {
+      offset,
+      pageSize: limit,
+      maxItems: MAX_ALL_PLAYLIST_ITEMS,
+    });
 
     return {
-      ...(lastPage ?? {
-        href: '',
-        limit,
-        next: null,
-        offset,
-        previous: null,
-        total: allItems.length,
-      }),
-      items: allItems,
+      href: '',
+      items: collected.items,
       offset,
-      limit: allItems.length,
+      limit: collected.items.length,
       next: null,
       previous: null,
+      total: collected.total ?? collected.items.length,
     };
   }
 
@@ -185,6 +159,59 @@ export class SpotifyClient {
       `/playlists/${encodeURIComponent(playlistId)}?fields=snapshot_id`,
     );
     return playlist.snapshot_id;
+  }
+
+  public async getPlaylist(playlistId: string): Promise<ISpotifyPlaylist> {
+    const fields =
+      'id,name,description,public,collaborative,snapshot_id,uri,owner(id,display_name),external_urls';
+    return this.request<ISpotifyPlaylist>(
+      `/playlists/${encodeURIComponent(playlistId)}?fields=${encodeURIComponent(fields)}`,
+    );
+  }
+
+  public async getCurrentUser(): Promise<ISpotifyCurrentUser> {
+    if (!this.currentUser) {
+      this.currentUser = await this.request<ISpotifyCurrentUser>('/me');
+    }
+    return this.currentUser;
+  }
+
+  public async getMyPlaylists(
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyPlaylist>> {
+    const params = this.pageParams(options, 50);
+    return this.request<ISpotifyPaging<ISpotifyPlaylist>>(
+      `/me/playlists?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_PLAYLIST_READ_PRIVATE] } },
+    );
+  }
+
+  // ---- Playlists: writes ------------------------------------------------
+
+  public async createPlaylist(options: ICreatePlaylistOptions): Promise<ISpotifyPlaylist> {
+    return this.request<ISpotifyPlaylist>('/me/playlists', {
+      method: 'POST',
+      body: {
+        name: options.name,
+        public: options.public,
+        ...(options.description !== undefined ? { description: options.description } : {}),
+      },
+      scopes: {
+        allOf: [options.public ? SCOPE_PLAYLIST_MODIFY_PUBLIC : SCOPE_PLAYLIST_MODIFY_PRIVATE],
+      },
+    });
+  }
+
+  public async updatePlaylistDetails(options: IUpdatePlaylistDetailsOptions): Promise<void> {
+    await this.request<void>(`/playlists/${encodeURIComponent(options.playlistId)}`, {
+      method: 'PUT',
+      body: {
+        ...(options.name !== undefined ? { name: options.name } : {}),
+        ...(options.description !== undefined ? { description: options.description } : {}),
+        ...(options.public !== undefined ? { public: options.public } : {}),
+      },
+      scopes: { anyOf: [SCOPE_PLAYLIST_MODIFY_PUBLIC, SCOPE_PLAYLIST_MODIFY_PRIVATE] },
+    });
   }
 
   public async addPlaylistItems(
@@ -256,6 +283,8 @@ export class SpotifyClient {
     );
   }
 
+  // ---- Library, listening history, discovery ---------------------------
+
   public async addLikedTracksIfMissing(
     uris: string[],
     dryRun = false,
@@ -286,6 +315,99 @@ export class SpotifyClient {
     };
   }
 
+  public async getSavedTracks(
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifySavedTrack>> {
+    const params = this.pageParams(options, 50);
+    return this.request<ISpotifyPaging<ISpotifySavedTrack>>(
+      `/me/tracks?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_LIBRARY_READ] } },
+    );
+  }
+
+  public async getTopTracks(
+    timeRange: string,
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyTrack>> {
+    const params = this.pageParams(options, 50);
+    params.set('time_range', timeRange);
+    return this.request<ISpotifyPaging<ISpotifyTrack>>(
+      `/me/top/tracks?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_TOP_READ] } },
+    );
+  }
+
+  public async getTopArtists(
+    timeRange: string,
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyArtist>> {
+    const params = this.pageParams(options, 50);
+    params.set('time_range', timeRange);
+    return this.request<ISpotifyPaging<ISpotifyArtist>>(
+      `/me/top/artists?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_TOP_READ] } },
+    );
+  }
+
+  public async getRecentlyPlayed(
+    options: IGetRecentlyPlayedOptions = {},
+  ): Promise<ISpotifyCursorPaging<ISpotifyPlayHistory>> {
+    if (options.after !== undefined && options.before !== undefined) {
+      throw new Error('Spotify accepts only one of "after" and "before" for recently played tracks.');
+    }
+    const params = new URLSearchParams({
+      limit: String(clamp(options.limit ?? 20, 1, 50)),
+    });
+    if (options.after !== undefined) {
+      params.set('after', String(options.after));
+    }
+    if (options.before !== undefined) {
+      params.set('before', String(options.before));
+    }
+    return this.request<ISpotifyCursorPaging<ISpotifyPlayHistory>>(
+      `/me/player/recently-played?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_RECENTLY_PLAYED] } },
+    );
+  }
+
+  public async getArtistAlbums(
+    artistId: string,
+    options: IGetArtistAlbumsOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyAlbum>> {
+    const params = this.pageParams(options, 50);
+    if (options.includeGroups?.length) {
+      params.set('include_groups', options.includeGroups.join(','));
+    }
+    if (options.market) {
+      params.set('market', options.market);
+    }
+    return this.request<ISpotifyPaging<ISpotifyAlbum>>(
+      `/artists/${encodeURIComponent(artistId)}/albums?${params.toString()}`,
+    );
+  }
+
+  public async getAlbumTracks(
+    albumId: string,
+    options: IGetAlbumTracksOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifySimplifiedTrack>> {
+    const params = this.pageParams(options, 50);
+    if (options.market) {
+      params.set('market', options.market);
+    }
+    return this.request<ISpotifyPaging<ISpotifySimplifiedTrack>>(
+      `/albums/${encodeURIComponent(albumId)}/tracks?${params.toString()}`,
+    );
+  }
+
+  // ---- Internals --------------------------------------------------------
+
+  private pageParams(options: IPageOptions, maxLimit: number): URLSearchParams {
+    return new URLSearchParams({
+      limit: String(clamp(options.limit ?? 20, 1, maxLimit)),
+      offset: String(Math.max(options.offset ?? 0, 0)),
+    });
+  }
+
   private assertMutationBatch(uris: string[]): void {
     if (uris.length > 100) {
       throw new Error('Spotify playlist mutation endpoints accept at most 100 URIs per request.');
@@ -298,59 +420,131 @@ export class SpotifyClient {
     }
   }
 
+  private assertScopes(requirement: ISpotifyScopeRequirement | undefined): void {
+    if (!requirement || !this.grantedScopes) {
+      return;
+    }
+    const granted = this.grantedScopes;
+    const missingAll = (requirement.allOf ?? []).filter((scope) => !granted.has(scope));
+    if (missingAll.length > 0) {
+      throw new SpotifyScopeError(missingAll);
+    }
+    if (requirement.anyOf?.length && !requirement.anyOf.some((scope) => granted.has(scope))) {
+      throw new SpotifyScopeError(requirement.anyOf);
+    }
+  }
+
   private async request<TResponse>(
     path: string,
     options: ISpotifyRequestOptions = {},
   ): Promise<TResponse> {
-    const token = await this.getAccessToken();
-    const response = await fetch(`${SPOTIFY_API_BASE_URL}${path}`, {
-      method: options.method ?? 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(options.body !== undefined
-          ? { 'Content-Type': 'application/json' }
-          : {}),
-      },
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    });
+    const method = options.method ?? 'GET';
+    const isRead = method === 'GET';
+    let rateLimitRetries = 0;
+    let serverErrorRetries = 0;
+    let refreshedAfter401 = false;
 
-    if (response.status === 429) {
-      const retryAfterSeconds = Number(response.headers.get('retry-after') ?? '1');
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.max(retryAfterSeconds, 1) * 1000),
-      );
-      return this.request<TResponse>(path, options);
-    }
+    for (;;) {
+      const token = await this.getAccessToken();
+      this.assertScopes(options.scopes);
 
-    if (response.status === 401) {
-      this.accessToken = null;
-      this.accessTokenExpiresAt = 0;
-    }
-
-    if (!response.ok) {
-      const raw = await response.text();
-      let message = raw || response.statusText;
-
+      let response: Response;
       try {
-        const body = JSON.parse(raw) as ISpotifyErrorBody;
-        message = body.error?.message ?? body.error_description ?? message;
-      } catch {
-        // Keep the raw response when Spotify did not return JSON.
+        response = await this.fetchImpl(`${SPOTIFY_API_BASE_URL}${path}`, {
+          method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(options.body !== undefined
+              ? { 'Content-Type': 'application/json' }
+              : {}),
+          },
+          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (error) {
+        if (isRead && serverErrorRetries < this.maxServerErrorRetries) {
+          serverErrorRetries += 1;
+          await this.sleep(500 * serverErrorRetries);
+          continue;
+        }
+        const reason = error instanceof Error ? error.name : 'network error';
+        throw new Error(
+          isRead
+            ? `Spotify request failed (${reason}).`
+            : `Spotify ${method} request failed (${reason}). The outcome is unknown and the request was not retried; re-read the current state before trying again.`,
+        );
       }
 
-      throw new Error(`Spotify API ${response.status}: ${message}`);
-    }
+      if (response.status === 429) {
+        const parsed = Number(response.headers.get('retry-after') ?? '1');
+        const retryAfterSeconds = Math.max(Number.isFinite(parsed) ? parsed : 1, 1);
+        if (
+          rateLimitRetries >= this.maxRateLimitRetries ||
+          retryAfterSeconds > this.maxRetryAfterSeconds
+        ) {
+          throw new SpotifyApiError(
+            429,
+            `Rate limited by Spotify. Retry after ${retryAfterSeconds} seconds.`,
+          );
+        }
+        rateLimitRetries += 1;
+        await this.sleep(retryAfterSeconds * 1000);
+        continue;
+      }
 
-    if (response.status === 204) {
-      return undefined as TResponse;
-    }
+      if (response.status === 401) {
+        this.accessToken = null;
+        this.accessTokenExpiresAt = 0;
+        if (!refreshedAfter401) {
+          refreshedAfter401 = true;
+          continue;
+        }
+      }
 
-    const raw = await response.text();
-    if (!raw) {
-      return undefined as TResponse;
-    }
+      if (response.status >= 500 && isRead && serverErrorRetries < this.maxServerErrorRetries) {
+        serverErrorRetries += 1;
+        await this.sleep(500 * serverErrorRetries);
+        continue;
+      }
 
-    return JSON.parse(raw) as TResponse;
+      if (!response.ok) {
+        const raw = await response.text();
+        let message = raw || response.statusText;
+
+        try {
+          const body = JSON.parse(raw) as ISpotifyErrorBody;
+          message = body.error?.message ?? body.error_description ?? message;
+        } catch {
+          // Keep the raw response when Spotify did not return JSON.
+        }
+
+        if (response.status === 403) {
+          message +=
+            ' (This can mean a missing OAuth scope — re-run `npm run auth` — or that the playlist or endpoint is not accessible to this Development Mode app.)';
+        }
+        if (response.status >= 500 && !isRead) {
+          message +=
+            ' (The change may or may not have been applied; re-read the current state before retrying.)';
+        }
+
+        throw new SpotifyApiError(response.status, message);
+      }
+
+      if (response.status === 204) {
+        return undefined as TResponse;
+      }
+
+      const raw = await response.text();
+      if (!raw) {
+        return undefined as TResponse;
+      }
+
+      try {
+        return JSON.parse(raw) as TResponse;
+      } catch {
+        throw new Error('Spotify returned a response that is not valid JSON.');
+      }
+    }
   }
 
   private async getAccessToken(): Promise<string> {
@@ -368,13 +562,14 @@ export class SpotifyClient {
       `${this.config.clientId}:${this.config.clientSecret}`,
     ).toString('base64');
 
-    const response = await fetch(SPOTIFY_TOKEN_URL, {
+    const response = await this.fetchImpl(SPOTIFY_TOKEN_URL, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${credentials}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: form,
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
 
     if (!response.ok) {
@@ -387,6 +582,7 @@ export class SpotifyClient {
     const token = (await response.json()) as ISpotifyTokenResponse;
     this.accessToken = token.access_token;
     this.accessTokenExpiresAt = Date.now() + token.expires_in * 1000;
+    this.grantedScopes = token.scope ? new Set(token.scope.split(/\s+/).filter(Boolean)) : null;
 
     if (token.refresh_token && token.refresh_token !== this.config.refreshToken) {
       process.stderr.write(

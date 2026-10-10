@@ -2,53 +2,77 @@
 
 ## Responsibility split
 
-`src/config.ts` loads and validates environment configuration.
-`src/authorize.ts` performs the one-time authorization-code bootstrap.
-`src/spotify.ts` holds the in-memory access-token cache and makes all Spotify
-Web API calls. Keep Spotify endpoint details, URI encoding, status handling,
-and batch assertions there.
+`src/config.ts` loads environment configuration. `src/scopes.ts` defines the
+OAuth scopes. `src/authorize.ts` performs the one-time authorization-code
+bootstrap. `src/spotify.ts` holds the in-memory token cache and makes all
+Spotify Web API calls: endpoint details, URI encoding, status handling,
+retries, scope checks and batch assertions stay there.
 
 ## Authentication flow
 
-`npm run auth` starts a temporary HTTP callback server at the configured
-`SPOTIFY_REDIRECT_URI`, which must use host `127.0.0.1` rather than
-`localhost`. It creates a random OAuth state, requests playlist modification
-and Liked Songs read/write scopes, exchanges the returned code, and prints the
-refresh token for the developer to save in `.env`.
+`npm run auth` starts a temporary callback server at `SPOTIFY_REDIRECT_URI`
+(host must be `127.0.0.1`), creates a random state, requests `REQUESTED_SCOPES`,
+exchanges the code, and prints the refresh token for `.env`.
 
-For normal MCP calls, `SpotifyClient` exchanges the configured refresh token
-for an access token on demand and caches it until 30 seconds before expiry. A
-401 clears that cache; the failing request is still reported as an error.
-Spotify rate-limit (429) responses wait for `Retry-After` (at least one second)
-and retry the same request. Do not log token-bearing requests or responses.
+Scopes: `playlist-modify-public`, `playlist-modify-private`,
+`playlist-read-private`, `playlist-read-collaborative`, `user-library-read`,
+`user-library-modify`, `user-top-read`, `user-read-recently-played`. Changing
+this list requires users to re-run `npm run auth`.
+
+For MCP calls `SpotifyClient` refreshes an access token on demand, caches it
+until 30 s before expiry, and records the `scope` string Spotify returns. A
+request that declares `scopes: { allOf | anyOf }` fails with `SpotifyScopeError`
+(before sending) when a scope is known to be missing. The original nine tools
+declare no scopes, to stay compatible with older refresh tokens.
+
+## Request handling
+
+- Timeout 15 s per request (`AbortSignal.timeout`).
+- 401: clear token, refresh and retry once.
+- 429: wait `Retry-After` (min 1 s) and retry up to 3 times; stop with a
+  `SpotifyApiError(429)` if the wait exceeds 30 s. Retrying 429 is safe for
+  mutations because the request was not applied.
+- 5xx and network errors/timeouts: GET is retried up to 2 times. Mutations are
+  never retried; the error states the outcome is unknown.
+- 403 messages mention missing scope or Development Mode access.
+- Do not log token-bearing requests or Spotify response bodies.
+
+## Endpoints used (Development Mode, February 2026 API)
+
+`GET /search` (limit ≤ 10), `GET /tracks/{id}`, `GET /me`, `GET /me/playlists`,
+`POST /me/playlists`, `GET|PUT /playlists/{id}` (metadata/update),
+`GET|POST|PUT|DELETE /playlists/{id}/items`, `GET /me/top/{tracks|artists}`,
+`GET /me/player/recently-played`, `GET /me/tracks`,
+`GET /me/library/contains`, `PUT /me/library`, `GET /artists/{id}/albums`,
+`GET /albums/{id}/tracks`.
+
+Not used: `POST /users/{id}/playlists`, `/playlists/{id}/tracks`, batch
+`GET /tracks|artists|albums`, Recommendations, Audio Features/Analysis,
+Related Artists, browse endpoints.
 
 ## API behavior that matters
 
-- Playlist reads accept a 1–100 page size. `all=true` follows Spotify paging
-  from the supplied offset and returns collected items as one result.
-- Playlist add, remove, and replace calls are capped at 100 URIs per request
-  by this server. Split larger intentional operations explicitly.
-- Liked Songs contains/save calls are capped at 40 URIs per request. The
-  current tool permits only `spotify:track:` URIs and avoids saving tracks
-  already present.
-- Playlist endpoints return a `snapshot_id` after mutations. The client can read a
-  playlist's current snapshot before any mutation when an `expectedSnapshotId` is
-  supplied; a mismatch aborts before the write. Remove and reorder also pass that
-  snapshot to Spotify's native request guard. Add and replace do not accept a
-  snapshot in this implementation, so their protection is the pre-write check.
-- Search is track-only and caps results at 10. Playlist add/replace schemas
-  allow Spotify track or episode URIs, but callers must provide exact Spotify
-  URIs.
+- Playlist reads accept 1–100 per page; `all=true` pages via `collectPages`
+  (bounded at 11,000 items). Other lists use ≤ 50 per page.
+- Playlist objects use `items` (not `tracks`) for the count reference and each
+  playlist item uses `item` (legacy `track` is tolerated). Items can be `null`
+  (removed/unavailable), local files or episodes; normalization reports them.
+- In Development Mode, playlist contents are readable only for playlists the
+  user owns or collaborates on; others return metadata only (403 on `/items`).
+- The app owner needs Premium; new Development Mode apps have a small authorized
+  user cap. Existing apps were granted a postponement of some changes, so do
+  not assume identical behavior.
+- Track `popularity` / `available_markets` and artist `followers` / `popularity`
+  are not returned; never depend on them.
+- Playlist add, remove, replace are capped at 100 URIs per request; Liked Songs
+  calls at 40. Snapshots: `expectedSnapshotId` is a pre-write read check;
+  remove and reorder also pass `snapshot_id` to Spotify's native guard.
+- `recently-played`: `after` and `before` are mutually exclusive Unix-ms cursors
+  and Spotify exposes only a short history.
 
 ## Error and state safety
 
-Spotify errors are converted to `Error` messages and returned through the MCP
-tool error result. Avoid adding logs that include Spotify response bodies
-without confirming that they cannot include secrets.
-
-Low-level Spotify mutation endpoints do not inherently prevent duplicates and
-a successful mutation snapshot does not prove a prior read is still current or
-make a retry safe. For ordinary additions, prefer `add_unique_playlist_items`,
-which performs application-level duplicate prevention against both the current
-playlist and duplicate URIs in the request. Preserve snapshot checks when the
+Spotify errors become `Error` messages (`SpotifyApiError` carries `status`).
+Low-level mutations do not prevent duplicates, and a successful snapshot does
+not prove a prior read is still current. Preserve snapshot checks when a
 decision depends on current playlist state.

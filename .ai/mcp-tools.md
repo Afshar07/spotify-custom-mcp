@@ -1,59 +1,69 @@
 # MCP tools and safe changes
 
-`src/server.ts` owns MCP registration, Zod input schemas, tool descriptions,
-and MCP result formatting. `src/spotify.ts` owns the corresponding Spotify Web
-API request and response handling.
+`src/mcp-server.ts` registers tool modules from `src/tools/`. Each handler owns
+its Zod input schema, description and result formatting; Spotify HTTP lives in
+`src/spotify.ts`; reusable logic lives in `src/services/`.
 
-## Current tools
+## Original tools (`src/tools/legacy.ts`) — stable contracts
 
 | Tool | Behavior and safety |
 | --- | --- |
 | `search_tracks` | Searches tracks (1–10) and returns exact Spotify URIs with compact metadata. |
 | `get_playlist_items` | Reads one page or all pages of a playlist. Use `all=true` before additions when duplicate detection matters. |
-| `get_playlist_summary` | Reads compact track summaries plus the current playlist snapshot ID for planning and concurrency checks. |
-| `add_playlist_items` | Adds 1–100 validated Spotify track or episode URIs, optionally at a position. It does not deduplicate. |
-| `add_unique_playlist_items` | Preferred addition workflow: validates Spotify track/episode URIs, reads the playlist, validates an optional expected snapshot, deduplicates, then adds only missing URIs. |
-| `remove_playlist_items` | Removes 1–100 URIs. Optional `snapshotId` guards against stale playlist state. Destructive. |
-| `reorder_playlist_items` | Moves a contiguous position range. Optional `snapshotId` guards against stale playlist state. Destructive in effect. |
-| `replace_playlist_items` | Replaces the whole playlist with 0–100 URIs; omitted existing items are removed. Explicitly destructive. |
-| `add_liked_tracks` | For 1–40 **track** URIs, checks Liked Songs first and saves only missing tracks. |
+| `get_playlist_summary` | Compact track summaries plus the current playlist snapshot ID. |
+| `add_playlist_items` | Adds 1–100 validated track or episode URIs, optionally at a position. No deduplication. |
+| `add_unique_playlist_items` | Preferred addition workflow: reads the playlist, validates an optional expected snapshot, deduplicates, adds only missing URIs. |
+| `remove_playlist_items` | Removes 1–100 URIs (every occurrence). Optional `snapshotId`. Destructive. |
+| `reorder_playlist_items` | Moves a contiguous range. Optional `snapshotId`. Destructive in effect. |
+| `replace_playlist_items` | Replaces the whole playlist with 0–100 URIs. Explicitly destructive. |
+| `add_liked_tracks` | For 1–40 **track** URIs, checks Liked Songs first and saves only missing ones. |
 
-All playlist mutation tools accept an optional `expectedSnapshotId`. When supplied,
-the server reads the current snapshot before mutation and rejects a mismatch without
-making changes. `get_playlist_summary` exposes a current snapshot ID for this flow.
-The Spotify endpoint snapshot supplied as `snapshotId` remains available on remove
-and reorder for backwards compatibility.
+All playlist mutation tools accept `expectedSnapshotId` (pre-write check;
+mismatch aborts) and `dryRun` (default `false`).
+
+## Added tools
+
+| Module | Tool | Notes |
+| --- | --- | --- |
+| `playlists.ts` | `list_my_playlists` | `GET /me/playlists`; filters scan up to 500 playlists and return `nextOffset`. |
+| | `create_playlist` | `POST /me/playlists` then batch add via `createPlaylistWithTracks`; same-name guard (`allowDuplicateName`); partial population is returned with `isError`. |
+| | `update_playlist_details` | `PUT /playlists/{id}`; owner-only; sends only changed fields; `dryRun` diff. |
+| `library.ts` | `get_top_items` | `GET /me/top/{tracks,artists}`; no popularity. |
+| | `get_recently_played` | `after`/`before` are exclusive; limited history by Spotify. |
+| | `get_liked_tracks` | Bounded by `maxItems` ≤ 500; `query` filters only retrieved items. |
+| `discovery.ts` | `get_artist_albums` | `include_groups`, `market`; edition collapsing within the page. |
+| | `get_album_tracks` | Paged album tracks. |
+| `curation.ts` | `generate_playlist` | **`dryRun` defaults to true.** Verifies candidates with `GET /tracks/{id}` (400/404 ⇒ not found), exclusions, per-artist cap, `needs_more_candidates` guidance, creation via `createPlaylistWithTracks`. |
+| | `analyze_playlist` | Read-only statistics (`services/playlist-analysis.ts`). |
+| | `compare_playlists` | Read-only; Jaccard over unique track IDs (0 for empty/empty). |
+| | `suggest_playlist_flow` | **`dryRun` defaults to true.** Subjective strategies need caller `scores` or `proposedOrder`; apply = optional snapshot-guarded removal (needs `confirmRemoval`) + sequential reorder moves (≤ 200), snapshot chained; partial failure returns `status: partial_failure`. |
 
 ## Mutation workflow
 
-For ordinary additions, use `add_unique_playlist_items`. It reads the whole
-playlist, compares exact URIs, and reports additions and duplicates. Re-read when a
-decision is sensitive to current ordering or contents: other clients can change a
-playlist between calls.
-
-Use removal, reorder, and especially replacement only when the requested
-state is explicit. `replace_playlist_items` with an empty URI list clears the
-playlist. Never describe it as a safe way to append or edit one item.
+For ordinary additions use `add_unique_playlist_items`. Re-read when a decision
+depends on current ordering or contents. Use removal, reorder and especially
+replacement only when the requested state is explicit. `replace_playlist_items`
+with an empty list clears the playlist.
 
 ## Adding or changing a tool
 
-1. Confirm the Spotify endpoint, scope, request limit, response shape, and
-   destructive/concurrency behavior before implementation.
-2. Add explicit named interfaces in `src/spotify.ts` as needed and implement
-   the narrow client method there. Keep URI encoding and API errors inside the
-   client.
-3. Register the tool in `src/server.ts` with a restrictive Zod schema,
-   operational description, and `try`/`catch` returning `errorResult`.
-4. Return only useful non-secret data. Summarize large Spotify objects rather
-   than exposing raw responses without a reason.
-5. Add limits in both the public schema and client assertion when mutation
-   safety depends on them. Identify destructive behavior in the tool
-   description.
-6. Update `README.md`, this file, and focused `.ai` context together; run
-   `npm run typecheck` and `npm run build`.
+1. Confirm the Spotify endpoint, scope, request limit, response shape and
+   destructive/concurrency behavior against current Spotify docs (Development
+   Mode) before implementation.
+2. Add named interfaces in `src/models/` and the narrow client method in
+   `src/spotify.ts` (declare required scopes via `scopes` so a missing scope
+   fails before the request). Keep URI encoding and API errors in the client.
+3. Put reusable logic in `src/services/` as pure functions where possible.
+4. Register the tool in the matching `src/tools/*.ts` with a restrictive Zod
+   schema, an operational description, and `try`/`catch` returning
+   `errorResult`. Use `registerTool` from `IToolContext`.
+5. Return compact, non-secret data. Identify destructive behavior in the
+   description. Put limits in both the schema and the client assertion when
+   mutation safety depends on them. A `dryRun` must not mutate.
+6. Add unit tests (services) and integration tests (tool through the in-memory
+   MCP client with `FakeSpotify`); never use live Spotify writes in tests.
+7. Update `README.md`, this file and the focused `.ai` documents; run
+   `npm run typecheck`, `npm run typecheck:tests`, `npm test`, `npm run build`.
 
-Do not silently change low-level tool semantics, retry a non-idempotent mutation
-after an unknown network outcome, or infer a requested track from a display
-name. Deduplication is intentional only in `add_unique_playlist_items`, whose
-contract explicitly reports both added and skipped duplicate URIs. Such choices
-must remain visible in tool behavior because they can alter playlist state.
+Do not silently change low-level tool semantics, retry a non-idempotent
+mutation after an unknown outcome, or infer a track from a display name.
