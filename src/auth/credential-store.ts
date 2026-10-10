@@ -1,0 +1,124 @@
+import { spawn } from 'node:child_process';
+import { readFile, rm } from 'node:fs/promises';
+import {
+  ECredentialStoreErrorCode,
+  type ICredentialStore,
+  type ISecretProtector,
+  type IStoredCredentials,
+} from '../models/auth.js';
+import { writeFileAtomic } from './settings.js';
+
+export class CredentialStoreError extends Error {
+  public constructor(
+    public readonly code: ECredentialStoreErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CredentialStoreError';
+  }
+}
+
+/**
+ * Stores credentials as a DPAPI-protected blob in the user's local app data.
+ * The protector binds the blob to the current Windows user, so another user
+ * (or a copied file on another machine) cannot decrypt it.
+ */
+export class ProtectedFileCredentialStore implements ICredentialStore {
+  public constructor(
+    private readonly path: string,
+    private readonly protector: ISecretProtector,
+  ) {}
+
+  public async load(): Promise<IStoredCredentials | null> {
+    let blob: string;
+    try {
+      blob = await readFile(this.path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw new CredentialStoreError(ECredentialStoreErrorCode.Io, 'The credential file could not be read.');
+    }
+    let plaintext: string;
+    try {
+      plaintext = await this.protector.unprotect(blob.trim());
+    } catch {
+      throw new CredentialStoreError(
+        ECredentialStoreErrorCode.Protection,
+        'Windows could not unlock the saved sign-in (it may belong to a different Windows user).',
+      );
+    }
+    try {
+      const parsed = JSON.parse(plaintext) as Partial<IStoredCredentials>;
+      if (typeof parsed.refreshToken !== 'string' || !parsed.refreshToken || !Array.isArray(parsed.scopes)) {
+        throw new Error('shape');
+      }
+      return parsed as IStoredCredentials;
+    } catch {
+      throw new CredentialStoreError(ECredentialStoreErrorCode.Corrupt, 'The saved sign-in is damaged.');
+    }
+  }
+
+  public async save(credentials: IStoredCredentials): Promise<void> {
+    let blob: string;
+    try {
+      blob = await this.protector.protect(JSON.stringify(credentials));
+    } catch {
+      throw new CredentialStoreError(ECredentialStoreErrorCode.Protection, 'Windows could not encrypt the sign-in.');
+    }
+    try {
+      await writeFileAtomic(this.path, `${blob}\n`);
+    } catch {
+      throw new CredentialStoreError(ECredentialStoreErrorCode.Io, 'The credential file could not be written.');
+    }
+  }
+
+  public async delete(): Promise<void> {
+    try {
+      await rm(this.path, { force: true });
+    } catch {
+      throw new CredentialStoreError(ECredentialStoreErrorCode.Io, 'The credential file could not be removed.');
+    }
+  }
+}
+
+const PROTECT_SCRIPT =
+  "Add-Type -AssemblyName System.Security; $i=[Console]::In.ReadToEnd().Trim(); $b=[Convert]::FromBase64String($i); " +
+  "$o=[System.Security.Cryptography.ProtectedData]::Protect($b,$null,'CurrentUser'); [Convert]::ToBase64String($o)";
+const UNPROTECT_SCRIPT = PROTECT_SCRIPT.replace('::Protect(', '::Unprotect(');
+
+/** Windows DPAPI (CurrentUser scope) through the built-in Windows PowerShell. Secrets go over stdin, never argv. */
+export class WindowsDpapiProtector implements ISecretProtector {
+  public constructor(private readonly run = runPowerShell) {}
+
+  public protect(plaintext: string): Promise<string> {
+    return this.run(PROTECT_SCRIPT, Buffer.from(plaintext, 'utf8').toString('base64'));
+  }
+
+  public async unprotect(protectedText: string): Promise<string> {
+    return Buffer.from(await this.run(UNPROTECT_SCRIPT, protectedText), 'base64').toString('utf8');
+  }
+}
+
+function runPowerShell(script: string, input: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] },
+    );
+    let output = '';
+    child.stdout.on('data', (chunk) => (output += String(chunk)));
+    child.on('error', reject);
+    child.on('close', (code) => (code === 0 ? resolve(output.trim()) : reject(new Error('powershell failed'))));
+    child.stdin.end(input);
+  });
+}
+
+export function createDefaultCredentialStore(path: string): ICredentialStore {
+  if (process.platform !== 'win32') {
+    throw new CredentialStoreError(
+      ECredentialStoreErrorCode.Unsupported,
+      'Secure credential storage is only implemented for Windows.',
+    );
+  }
+  return new ProtectedFileCredentialStore(path, new WindowsDpapiProtector());
+}

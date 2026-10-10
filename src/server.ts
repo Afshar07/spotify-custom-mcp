@@ -1,10 +1,15 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { getDisabledTools, getSpotifyConfig } from './config.js';
+import { getDisabledTools } from './config.js';
 import { createMcpServer } from './mcp-server.js';
-import { SpotifyClient } from './spotify.js';
+import { createRuntimeSpotifyClient } from './runtime.js';
+
+// The packaged launcher sets SPOTIFY_CURATOR_PACKAGED=1: it must not read a .env from the working directory.
+if (process.env.SPOTIFY_CURATOR_PACKAGED !== '1') {
+  await import('dotenv/config');
+}
 
 // MCP stdout is protocol-only: diagnostics must go to stderr.
-const server = createMcpServer(new SpotifyClient(getSpotifyConfig()), {
+const server = createMcpServer(await createRuntimeSpotifyClient(), {
   disabledTools: getDisabledTools(),
 });
 
