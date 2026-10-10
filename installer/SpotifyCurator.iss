@@ -41,14 +41,14 @@ Name: "{autoprograms}\Spotify Curator Setup"; Filename: "{app}\spotify-curator.e
 Filename: "{app}\spotify-curator.exe"; Parameters: "setup"; Description: "Open Spotify Curator Setup"; Flags: postinstall nowait skipifsilent
 
 [Code]
-{ Credentials and settings live in %LOCALAPPDATA%\SpotifyCurator, outside {app}, so upgrades keep them. }
+// Credentials and settings live in %LOCALAPPDATA%\SpotifyCurator, outside the install folder, so upgrades keep them.
 var
   RemoveData: Boolean;
 
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  { Silent uninstalls keep user data unless /REMOVEDATA=1 is passed. }
+  // Silent uninstalls keep user data unless /REMOVEDATA=1 is passed.
   if UninstallSilent then
     RemoveData := ExpandConstant('{param:REMOVEDATA|0}') = '1'
   else
