@@ -9,15 +9,21 @@ apply better track orders through Spotify's Web API in Development Mode.
 
 It is not a Spotify client application, hosted service, database-backed
 service, scheduler, or multi-user/public SaaS. There is no remote/HTTP
-transport, no external LLM integration, and no ChatGPT-specific plugin. The
+transport and no external LLM integration. It also ships as a Windows
+installer (`spotify-curator.exe`, see `docs/windows-distribution.md`) with a
+local setup wizard; ChatGPT Desktop automatic setup is **unverified** and not
+implemented (`docs/chatgpt-desktop.md`). The
 MCP client does the creative/taste reasoning; this server does deterministic
 validation, bookkeeping and statistics. Keep dependencies and abstractions
 small.
 
 ## Runtime flow
 
-1. `src/server.ts` creates one `SpotifyClient` from `src/config.ts`, builds the
-   server with `createMcpServer` (`src/mcp-server.ts`) and connects stdio.
+1. `src/server.ts` (dev) or `spotify-curator.exe mcp` (`src/cli.ts`) calls
+   `startMcpServer` (`src/mcp-main.ts`): `createRuntimeSpotifyClient`
+   (`src/runtime.ts`) picks credentials (env-var install, else PKCE settings +
+   secure store, else a client that explains how to connect), builds the server
+   with `createMcpServer` (`src/mcp-server.ts`) and connects stdio.
    `SPOTIFY_DISABLED_TOOLS` (comma-separated) leaves tools unregistered.
 2. A tool call is validated by its Zod schema in `src/tools/*`, then delegates
    to `SpotifyClient` (`src/spotify.ts`) directly or through pure/orchestrating
@@ -28,8 +34,8 @@ small.
 4. Tools return compact JSON text (`jsonResult`), or `errorResult` /
    `jsonErrorResult` (structured body with `isError`) on failure.
 
-`src/authorize.ts` is a separate interactive OAuth bootstrap; it is not part of
-the MCP stdio process. Requested scopes live in `src/scopes.ts`.
+`src/authorize.ts` is the legacy interactive OAuth bootstrap (Client Secret flow);
+new installs use `src/auth/` (PKCE). Requested scopes live in `src/scopes.ts`.
 
 ## Source layout
 
@@ -43,6 +49,10 @@ the MCP stdio process. Requested scopes live in `src/scopes.ts`.
 | `src/tools/` | MCP handlers: `legacy.ts` (original nine), `playlists.ts`, `library.ts`, `discovery.ts`, `curation.ts`, `shared.ts` |
 | `src/services/` | `playlist-items.ts` (normalization), `playlist-analysis.ts`, `playlist-comparison.ts`, `playlist-flow.ts`, `playlist-generation.ts`, `playlist-creation.ts`, `playlist-listing.ts` |
 | `src/utils/` | `uri.ts` (URI/ID schemas, dedupe, chunk), `pagination.ts` (`collectPages`) |
+| `src/auth/` | PKCE auth service (`spotify-auth-service.ts`), loopback listener, DPAPI `credential-store.ts`, `settings.ts`, `app-paths.ts`, `redact.ts` |
+| `src/clients/` | `IMcpClientAdapter` implementations: `opencode-adapter.ts` (JSONC-safe edits, backup/rollback), `chatgpt-adapter.ts` (unverified, manual only), `generic-config.ts`, `mcp-handshake.ts` |
+| `src/setup/`, `src/diagnostics.ts`, `src/cli.ts` | setup wizard server + UI, diagnostics, CLI entry (`mcp`, `setup`, `doctor`, `cleanup`, ...) |
+| `scripts/build-exe.mjs`, `installer/`, `.github/workflows/` | Node SEA build, Inno Setup installer, Windows CI |
 | `src/tools/podcasts.ts`, `src/services/podcast-*.ts`, `src/models/podcast.ts` | podcast tools (7), see `mcp-tools.md` |
 | `tests/` | `unit/`, `integration/` (in-memory MCP client + fake Spotify HTTP), `helpers/fake-spotify.ts` |
 
@@ -73,8 +83,11 @@ the MCP stdio process. Requested scopes live in `src/scopes.ts`.
 
 ## Environment and commands
 
-Required MCP environment values are `SPOTIFY_CLIENT_ID`,
-`SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_REFRESH_TOKEN`. `SPOTIFY_REDIRECT_URI`
+New installs need no environment values: Client ID + redirect port live in
+`%LOCALAPPDATA%\SpotifyCurator\settings.json` and the refresh token in the DPAPI
+store (`SPOTIFY_CURATOR_DATA_DIR` overrides the folder). Legacy env installs
+still work when `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and
+`SPOTIFY_REFRESH_TOKEN` are all set. `SPOTIFY_REDIRECT_URI`
 defaults to `http://127.0.0.1:8888/callback`. Optional:
 `SPOTIFY_DISABLED_TOOLS`. Keep `.env` local and untracked; `.env.example`
 contains names only.
@@ -87,6 +100,8 @@ contains names only.
 | `npm run typecheck` / `typecheck:tests` | strict TypeScript check of `src` / of `src`+`tests` |
 | `npm test` | Vitest: unit, integration and regression tests (mocked Spotify, no network) |
 | `npm run build` | compile `src` to `dist` |
+| `npm run build:exe` | build `build/spotify-curator(.exe)` (esbuild + Node SEA); run `REQUIRE_STANDALONE=1 npm test` to include `tests/runtime` |
+| `npm run setup` | run the setup wizard from source |
 | `npm start` | run compiled `dist/server.js` |
 
 ## Conventions and limitations
@@ -96,15 +111,19 @@ contains names only.
   compatible with NodeNext ESM and strict TypeScript.
 - Stack: native `fetch`, `@modelcontextprotocol/sdk`, Zod; Vitest for tests. No
   database.
-- Token refresh is in-memory per process. A rotated refresh token is reported
-  to stderr but not persisted.
+- Access tokens are cached in memory per process. With PKCE credentials a rotated
+  refresh token is persisted to the secure store (and re-read if another process
+  rotated it first); with legacy env installs it is only reported to stderr.
 - Development Mode: playlist contents are only readable for playlists the user
   owns or collaborates on; the app owner needs Premium. See `spotify-integration.md`.
 
 ## Decisions not to casually change
 
 - Keep MCP transport on stdio for local use.
-- Keep credentials in environment variables rather than adding persistence.
+- Secrets only ever live in the per-user secure store (PKCE installs) or the
+  legacy environment variables; never in client config files, `settings.json`,
+  logs or MCP output. `SPOTIFY_CURATOR_PACKAGED=1` (set by the SEA launcher)
+  disables `.env` loading from the working directory.
 - Keep mutation controls at the MCP/Zod and Spotify-client boundaries; keep
   Spotify HTTP inside `SpotifyClient` and business logic in `src/services`.
 - Do not turn the client into a generic Spotify SDK, add a data layer, or add

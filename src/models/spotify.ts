@@ -239,6 +239,8 @@ export interface IGetAlbumTracksOptions extends IPageOptions {
 }
 
 export interface ISpotifyClientOptions {
+  /** When set, replaces the env-based refresh flow (PKCE credentials from the secure store). */
+  tokenProvider?: import('./auth.js').ITokenProvider;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   timeoutMs?: number;

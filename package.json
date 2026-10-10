@@ -1,6 +1,6 @@
 {
   "name": "spotify-custom-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,15 +10,21 @@
     "auth": "tsx src/authorize.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit"
+    "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
+    "build:exe": "node scripts/build-exe.mjs",
+    "setup": "tsx src/cli.ts setup --foreground",
+    "cli": "tsx src/cli.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
+    "jsonc-parser": "^3.3.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.7"

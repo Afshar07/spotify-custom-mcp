@@ -1,13 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "servers": {
-      "spotify-playlists": {
-        "type": "local",
-        "command": ["node", "/ABSOLUTE/PATH/spotify-custom-mcp/dist/server.js"],
-        "cwd": "/ABSOLUTE/PATH/spotify-custom-mcp",
-        "codemode": false
-      }
+    // Developer setup (running from source). End users get this entry written
+    // automatically by Spotify Curator Setup: command is [<installed exe>, "mcp"].
+    "spotify-playlists": {
+      "type": "local",
+      "command": ["node", "/ABSOLUTE/PATH/spotify-custom-mcp/dist/server.js"],
+      "enabled": true
     }
   }
 }

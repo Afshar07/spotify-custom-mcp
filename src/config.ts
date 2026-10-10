@@ -1,5 +1,3 @@
-import 'dotenv/config';
-
 export interface ISpotifyConfig {
   clientId: string;
   clientSecret: string;
@@ -13,21 +11,21 @@ export interface ISpotifyAuthConfig {
   redirectUri: string;
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim();
+function requireEnv(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  const value = env[name]?.trim();
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
 }
 
-export function getSpotifyConfig(): ISpotifyConfig {
+export function getSpotifyConfig(env: NodeJS.ProcessEnv = process.env): ISpotifyConfig {
   return {
-    clientId: requireEnv('SPOTIFY_CLIENT_ID'),
-    clientSecret: requireEnv('SPOTIFY_CLIENT_SECRET'),
-    refreshToken: requireEnv('SPOTIFY_REFRESH_TOKEN'),
+    clientId: requireEnv('SPOTIFY_CLIENT_ID', env),
+    clientSecret: requireEnv('SPOTIFY_CLIENT_SECRET', env),
+    refreshToken: requireEnv('SPOTIFY_REFRESH_TOKEN', env),
     redirectUri:
-      process.env.SPOTIFY_REDIRECT_URI?.trim() ||
+      env.SPOTIFY_REDIRECT_URI?.trim() ||
       'http://127.0.0.1:8888/callback',
   };
 }
