@@ -2,7 +2,13 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ProtectedFileCredentialStore, WindowsDpapiProtector } from '../../src/auth/credential-store.js';
+import {
+  PowerShellUnavailableError,
+  ProtectedFileCredentialStore,
+  WindowsDpapiProtector,
+  buildPowerShellEnv,
+  getPowerShellPath,
+} from '../../src/auth/credential-store.js';
 import { ECredentialStoreErrorCode, type IStoredCredentials } from '../../src/models/auth.js';
 import { FakeUserProtector } from '../helpers/auth-fakes.js';
 
@@ -80,5 +86,31 @@ describe('WindowsDpapiProtector', () => {
   it('decodes the unprotected output', async () => {
     const protector = new WindowsDpapiProtector(async () => Buffer.from('hello').toString('base64'));
     await expect(protector.unprotect('blob')).resolves.toBe('hello');
+  });
+});
+
+describe('stripped-environment launches (e.g. an MCP client that passes no PATH)', () => {
+  it('locates PowerShell by absolute path under SystemRoot, not by PATH', () => {
+    expect(getPowerShellPath({ SystemRoot: 'C:\\Windows' })).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(getPowerShellPath({})).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+  });
+
+  it('gives the child a usable PATH and SystemRoot even when the parent has none', () => {
+    const env = buildPowerShellEnv({ SystemRoot: 'D:\\Win' });
+    expect(env.PATH).toBe('D:\\Win\\System32');
+    expect(env.SystemRoot).toBe('D:\\Win');
+    expect(buildPowerShellEnv({ SystemRoot: 'C:\\Windows', PATH: 'X' }).PATH).toBe('C:\\Windows\\System32;X');
+  });
+
+  it('says PowerShell could not start, instead of blaming a different Windows user', async () => {
+    const path = await tempFile();
+    await new ProtectedFileCredentialStore(path, new FakeUserProtector('alice')).save(credentials);
+    const broken = {
+      protect: async () => { throw new PowerShellUnavailableError(); },
+      unprotect: async () => { throw new PowerShellUnavailableError(); },
+    };
+    const store = new ProtectedFileCredentialStore(path, broken);
+    await expect(store.load()).rejects.toThrow(/PowerShell could not be started/);
+    await expect(store.save(credentials)).rejects.toThrow(/PowerShell could not be started/);
   });
 });

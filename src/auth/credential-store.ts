@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { win32 } from 'node:path';
 import { readFile, rm } from 'node:fs/promises';
 import {
   ECredentialStoreErrorCode,
@@ -40,10 +41,12 @@ export class ProtectedFileCredentialStore implements ICredentialStore {
     let plaintext: string;
     try {
       plaintext = await this.protector.unprotect(blob.trim());
-    } catch {
+    } catch (error) {
       throw new CredentialStoreError(
         ECredentialStoreErrorCode.Protection,
-        'Windows could not unlock the saved sign-in (it may belong to a different Windows user).',
+        error instanceof PowerShellUnavailableError
+          ? 'Windows PowerShell could not be started, which is needed to unlock the saved sign-in.'
+          : 'Windows could not unlock the saved sign-in (it may belong to a different Windows user).',
       );
     }
     try {
@@ -61,8 +64,13 @@ export class ProtectedFileCredentialStore implements ICredentialStore {
     let blob: string;
     try {
       blob = await this.protector.protect(JSON.stringify(credentials));
-    } catch {
-      throw new CredentialStoreError(ECredentialStoreErrorCode.Protection, 'Windows could not encrypt the sign-in.');
+    } catch (error) {
+      throw new CredentialStoreError(
+        ECredentialStoreErrorCode.Protection,
+        error instanceof PowerShellUnavailableError
+          ? 'Windows PowerShell could not be started, which is needed to save the sign-in securely.'
+          : 'Windows could not encrypt the sign-in.',
+      );
     }
     try {
       await writeFileAtomic(this.path, `${blob}\n`);
@@ -98,17 +106,42 @@ export class WindowsDpapiProtector implements ISecretProtector {
   }
 }
 
+export class PowerShellUnavailableError extends Error {
+  public constructor() {
+    super('powershell-unavailable');
+    this.name = 'PowerShellUnavailableError';
+  }
+}
+
+/**
+ * Absolute path to the built-in Windows PowerShell. Some MCP clients start servers with a
+ * stripped environment (no PATH), so the bare name `powershell.exe` cannot be relied on.
+ */
+export function getPowerShellPath(env: NodeJS.ProcessEnv = process.env): string {
+  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? env.WINDIR ?? 'C:\\Windows';
+  return win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+}
+
+/** Child environment that always has a usable PATH and SystemRoot, whatever the parent passed. */
+export function buildPowerShellEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? env.WINDIR ?? 'C:\\Windows';
+  const system32 = win32.join(root, 'System32');
+  const existing = env.PATH ?? env.Path ?? '';
+  return { ...env, SystemRoot: root, PATH: existing ? `${system32};${existing}` : system32 };
+}
+
 function runPowerShell(script: string, input: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(
-      'powershell.exe',
+      getPowerShellPath(),
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] },
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'], env: buildPowerShellEnv() },
     );
     let output = '';
     child.stdout.on('data', (chunk) => (output += String(chunk)));
-    child.on('error', reject);
+    child.on('error', () => reject(new PowerShellUnavailableError()));
     child.on('close', (code) => (code === 0 ? resolve(output.trim()) : reject(new Error('powershell failed'))));
+    child.stdin.on('error', () => undefined);
     child.stdin.end(input);
   });
 }
