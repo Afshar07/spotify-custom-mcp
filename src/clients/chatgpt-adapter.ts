@@ -33,7 +33,7 @@ export class ChatGptDesktopAdapter implements IMcpClientAdapter {
       installed: EClientDetection.Unknown,
       support: this.support,
       detail:
-        'Automatic setup for ChatGPT Desktop is not available yet: whether your ChatGPT version and plan accept a local MCP program has not been verified. You can try the manual steps below.',
+        'Automatic setup for ChatGPT Desktop is not available yet: whether your ChatGPT version and plan accept a local MCP program has not been verified. Tick it to get manual steps to try.',
     };
   }
 

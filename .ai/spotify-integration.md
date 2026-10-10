@@ -3,14 +3,24 @@
 ## Responsibility split
 
 `src/config.ts` loads environment configuration. `src/scopes.ts` defines the
-OAuth scopes. `src/authorize.ts` performs the one-time authorization-code
-bootstrap. `src/spotify.ts` holds the in-memory token cache and makes all
+OAuth scopes. `src/auth/spotify-auth-service.ts` performs Authorization Code + PKCE (S256, random
+`state`, loopback listener on `127.0.0.1:<port>/callback`, default 8888, no client
+secret) for new installs and supplies tokens to `SpotifyClient` through
+`ITokenProvider`. `src/authorize.ts` is the legacy Client-Secret bootstrap. `src/spotify.ts` holds the in-memory token cache and makes all
 Spotify Web API calls: endpoint details, URI encoding, status handling,
 retries, scope checks and batch assertions stay there.
 
 ## Authentication flow
 
-`npm run auth` starts a temporary callback server at `SPOTIFY_REDIRECT_URI`
+PKCE flow (setup wizard / `spotify-curator connect`): user-supplied Client ID, redirect
+`http://127.0.0.1:8888/callback` registered in the user's Spotify app; code exchange
+sends `client_id` + `code_verifier`; refresh sends `client_id` only. The connect step
+refuses to save if scopes are missing or `/me` returns 403 (Development Mode user not
+allowlisted). Errors are `AuthError`s with friendly messages. Spotify facts here come
+from search summaries of Spotify docs (primary pages were unreachable at build time);
+re-verify against developer.spotify.com when touching this.
+
+Legacy: `npm run auth` starts a temporary callback server at `SPOTIFY_REDIRECT_URI`
 (host must be `127.0.0.1`), creates a random state, requests `REQUESTED_SCOPES`,
 exchanges the code, and prints the refresh token for `.env`.
 
