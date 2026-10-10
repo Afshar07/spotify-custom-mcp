@@ -1,3 +1,4 @@
+import { APP_VERSION } from './version.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SpotifyClient } from './spotify.js';
 import { registerCurationTools } from './tools/curation.js';
@@ -9,7 +10,7 @@ import { registerPodcastTools } from './tools/podcasts.js';
 import type { IToolContext } from './tools/shared.js';
 
 export const SERVER_NAME = 'spotify-custom-mcp';
-export const SERVER_VERSION = '0.2.0';
+export const SERVER_VERSION = APP_VERSION;
 
 export interface IMcpServerOptions {
   /** Tool names to leave unregistered (e.g. features whose scopes were not granted). */

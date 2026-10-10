@@ -37,7 +37,7 @@ export async function createRuntimeSpotifyClient(deps: IRuntimeDeps = {}): Promi
   const placeholder = { clientId: '', clientSecret: '', refreshToken: '', redirectUri: '' };
 
   if (env.SPOTIFY_CLIENT_ID && env.SPOTIFY_REFRESH_TOKEN && env.SPOTIFY_CLIENT_SECRET) {
-    return new SpotifyClient(getSpotifyConfig(), { fetch: deps.fetch });
+    return new SpotifyClient(getSpotifyConfig(env), { fetch: deps.fetch });
   }
 
   const dataDir = getDataDir(env);

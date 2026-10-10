@@ -113,12 +113,27 @@ function runPowerShell(script: string, input: string): Promise<string> {
   });
 }
 
-export function createDefaultCredentialStore(path: string): ICredentialStore {
-  if (process.platform !== 'win32') {
+/** Fails every operation with a clear message; used where secure storage is not implemented. */
+class UnsupportedCredentialStore implements ICredentialStore {
+  private fail(): never {
     throw new CredentialStoreError(
       ECredentialStoreErrorCode.Unsupported,
       'Secure credential storage is only implemented for Windows.',
     );
   }
-  return new ProtectedFileCredentialStore(path, new WindowsDpapiProtector());
+  public async load(): Promise<IStoredCredentials | null> {
+    return this.fail();
+  }
+  public async save(): Promise<void> {
+    return this.fail();
+  }
+  public async delete(): Promise<void> {
+    return this.fail();
+  }
+}
+
+export function createDefaultCredentialStore(path: string): ICredentialStore {
+  return process.platform === 'win32'
+    ? new ProtectedFileCredentialStore(path, new WindowsDpapiProtector())
+    : new UnsupportedCredentialStore();
 }
