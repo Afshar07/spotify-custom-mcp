@@ -43,6 +43,7 @@ the MCP stdio process. Requested scopes live in `src/scopes.ts`.
 | `src/tools/` | MCP handlers: `legacy.ts` (original nine), `playlists.ts`, `library.ts`, `discovery.ts`, `curation.ts`, `shared.ts` |
 | `src/services/` | `playlist-items.ts` (normalization), `playlist-analysis.ts`, `playlist-comparison.ts`, `playlist-flow.ts`, `playlist-generation.ts`, `playlist-creation.ts`, `playlist-listing.ts` |
 | `src/utils/` | `uri.ts` (URI/ID schemas, dedupe, chunk), `pagination.ts` (`collectPages`) |
+| `src/tools/podcasts.ts`, `src/services/podcast-*.ts`, `src/models/podcast.ts` | podcast tools (7), see `mcp-tools.md` |
 | `tests/` | `unit/`, `integration/` (in-memory MCP client + fake Spotify HTTP), `helpers/fake-spotify.ts` |
 
 ## Preserve these invariants

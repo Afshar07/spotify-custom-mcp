@@ -46,6 +46,15 @@ declare no scopes, to stay compatible with older refresh tokens.
 `GET /me/library/contains`, `PUT /me/library`, `GET /artists/{id}/albums`,
 `GET /albums/{id}/tracks`.
 
+Podcast endpoints: `GET /search?type=show|episode`, `GET /shows/{id}`,
+`GET /shows/{id}/episodes`, `GET /me/episodes`, `GET /me/shows`,
+`GET /me/library/contains`, `PUT /me/library` (episode URIs, ≤ 40).
+Verified against Spotify's February 2026 changelog: removed `GET /shows`,
+`GET /episodes`, `PUT|DELETE /me/{shows,episodes}`, `GET /me/{shows,episodes}/contains`
+(never used). Show `publisher`/`available_markets` are deprecated, so
+publisher may be missing. `user-read-playback-position` is not requested; it
+only fills `resume_point`. No new scopes were needed for podcasts.
+
 Not used: `POST /users/{id}/playlists`, `/playlists/{id}/tracks`, batch
 `GET /tracks|artists|albums`, Recommendations, Audio Features/Analysis,
 Related Artists, browse endpoints.

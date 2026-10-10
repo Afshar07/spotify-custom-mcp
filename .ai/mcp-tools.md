@@ -38,6 +38,21 @@ mismatch aborts) and `dryRun` (default `false`).
 | | `compare_playlists` | Read-only; Jaccard over unique track IDs (0 for empty/empty). |
 | | `suggest_playlist_flow` | **`dryRun` defaults to true.** Subjective strategies need caller `scores` or `proposedOrder`; apply = optional snapshot-guarded removal (needs `confirmRemoval`) + sequential reorder moves (≤ 200), snapshot chained; partial failure returns `status: partial_failure`. |
 
+## Podcast tools (`src/tools/podcasts.ts`)
+
+Shows use bare IDs; episodes use `spotify:episode:` URIs. Episode and track
+URI contracts are separate (`spotifyEpisodeUriSchema` vs `spotifyTrackUriSchema`).
+Pure logic lives in `services/podcast-discovery.ts` (normalization, local
+sort/filter); `services/podcast-library.ts` holds `saveEpisodes`.
+
+| Tool | Notes |
+| --- | --- |
+| `search_podcasts`, `search_episodes` | `GET /search` type show/episode, limit 1–10, offset ≤ 1000; null results dropped and counted as `unavailable`. |
+| `get_podcast_details` | `GET /shows/{id}`. |
+| `get_podcast_episodes` | One page ≤ 50; `sort` reorders only that page; `includeShow` controls the extra show request. Never crawls the archive. |
+| `get_saved_episodes`, `get_saved_podcasts` | `GET /me/episodes`, `GET /me/shows` via `collectPages`, `maxItems` ≤ 500, `query` filters retrieved items only. Need `user-library-read`. |
+| `save_episode` | **`dryRun` defaults to true.** Reads `GET /me/library/contains` first, dedupes, writes `PUT /me/library` in batches of 40, never retries; a failed batch and later unattempted batches go to `failedUris` (`isError`). Needs `user-library-read` + `user-library-modify`. |
+
 ## Mutation workflow
 
 For ordinary additions use `add_unique_playlist_items`. Re-read when a decision

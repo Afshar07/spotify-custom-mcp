@@ -1,3 +1,5 @@
+import type { ISpotifyEpisode, ISpotifyShow } from './podcast.js';
+
 export interface ISpotifyTokenResponse {
   access_token: string;
   token_type: string;
@@ -138,6 +140,9 @@ export interface ISpotifyPlaylistSnapshot {
 
 export interface ISpotifySearchResponse {
   tracks?: ISpotifyPaging<ISpotifyTrack>;
+  /** Search pages can contain null entries for unavailable items. */
+  shows?: ISpotifyPaging<ISpotifyShow | null>;
+  episodes?: ISpotifyPaging<ISpotifyEpisode | null>;
 }
 
 export interface ISpotifyErrorBody {

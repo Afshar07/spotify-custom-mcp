@@ -40,7 +40,7 @@ describe('tool registration and input validation', () => {
     for (const tool of NEW_TOOLS) {
       expect(names, tool).toContain(tool);
     }
-    expect(names).toHaveLength(21);
+    expect(names).toHaveLength(28); // 21 existing + 7 podcast tools
   });
 
   it('gives every tool a description and an object input schema', async () => {
@@ -68,7 +68,7 @@ describe('tool registration and input validation', () => {
     expect(names).not.toContain('get_top_items');
     expect(names).not.toContain('search_tracks');
     expect(names).toContain('get_recently_played');
-    expect(names).toHaveLength(19);
+    expect(names).toHaveLength(26);
   });
 
   it.each([

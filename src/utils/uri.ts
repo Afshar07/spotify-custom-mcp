@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/;
+const EPISODE_URI = /^spotify:episode:[A-Za-z0-9]+$/;
 const PLAYLIST_ITEM_URI = /^spotify:(?:track|episode):[A-Za-z0-9]+$/;
 const SPOTIFY_ID = /^[A-Za-z0-9]{1,64}$/;
 
@@ -12,12 +13,20 @@ export const spotifyTrackUriSchema = z
   .string()
   .regex(TRACK_URI, 'Expected a Spotify track URI.');
 
+export const spotifyEpisodeUriSchema = z
+  .string()
+  .regex(EPISODE_URI, 'Expected a Spotify episode URI (spotify:episode:<id>).');
+
 export const spotifyIdSchema = z
   .string()
   .regex(SPOTIFY_ID, 'Expected a Spotify ID (not a URL or URI).');
 
 export function isTrackUri(value: string): boolean {
   return TRACK_URI.test(value);
+}
+
+export function isEpisodeUri(value: string): boolean {
+  return EPISODE_URI.test(value);
 }
 
 export function isPlaylistItemUri(value: string): boolean {

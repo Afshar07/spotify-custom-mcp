@@ -32,7 +32,16 @@ import type {
   ISpotifyTrack,
   IUpdatePlaylistDetailsOptions,
 } from './models/spotify.js';
+import type {
+  IGetShowEpisodesOptions,
+  ISearchPodcastOptions,
+  ISpotifyEpisode,
+  ISpotifySavedEpisode,
+  ISpotifySavedShow,
+  ISpotifyShow,
+} from './models/podcast.js';
 import {
+  SCOPE_LIBRARY_MODIFY,
   SCOPE_LIBRARY_READ,
   SCOPE_PLAYLIST_MODIFY_PRIVATE,
   SCOPE_PLAYLIST_MODIFY_PUBLIC,
@@ -74,6 +83,10 @@ export class SpotifyScopeError extends Error {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function emptyPage<TItem>(offset = 0): ISpotifyPaging<TItem> {
+  return { href: '', items: [], limit: 0, next: null, offset, previous: null, total: 0 };
 }
 
 export class SpotifyClient {
@@ -399,7 +412,107 @@ export class SpotifyClient {
     );
   }
 
+  // ---- Podcasts ---------------------------------------------------------
+
+  public async searchShows(
+    query: string,
+    options: ISearchPodcastOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyShow | null>> {
+    const result = await this.search(query, 'show', options);
+    return result.shows ?? emptyPage(options.offset);
+  }
+
+  public async searchEpisodes(
+    query: string,
+    options: ISearchPodcastOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyEpisode | null>> {
+    const result = await this.search(query, 'episode', options);
+    return result.episodes ?? emptyPage(options.offset);
+  }
+
+  public async getShow(showId: string, market?: string): Promise<ISpotifyShow> {
+    const params = new URLSearchParams();
+    if (market) {
+      params.set('market', market);
+    }
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return this.request<ISpotifyShow>(`/shows/${encodeURIComponent(showId)}${suffix}`);
+  }
+
+  public async getShowEpisodes(
+    showId: string,
+    options: IGetShowEpisodesOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifyEpisode | null>> {
+    const params = this.pageParams(options, 50);
+    if (options.market) {
+      params.set('market', options.market);
+    }
+    return this.request<ISpotifyPaging<ISpotifyEpisode | null>>(
+      `/shows/${encodeURIComponent(showId)}/episodes?${params.toString()}`,
+    );
+  }
+
+  public async getSavedEpisodes(
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifySavedEpisode>> {
+    const params = this.pageParams(options, 50);
+    return this.request<ISpotifyPaging<ISpotifySavedEpisode>>(
+      `/me/episodes?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_LIBRARY_READ] } },
+    );
+  }
+
+  public async getSavedShows(
+    options: IPageOptions = {},
+  ): Promise<ISpotifyPaging<ISpotifySavedShow>> {
+    const params = this.pageParams(options, 50);
+    return this.request<ISpotifyPaging<ISpotifySavedShow>>(
+      `/me/shows?${params.toString()}`,
+      { scopes: { allOf: [SCOPE_LIBRARY_READ] } },
+    );
+  }
+
+  /** `GET /me/library/contains` for up to 40 URIs; the result is index-aligned with `uris`. */
+  public async checkLibraryContains(uris: string[]): Promise<boolean[]> {
+    this.assertLibraryBatch(uris);
+    const params = new URLSearchParams({ uris: uris.join(',') });
+    const saved = await this.request<boolean[]>(`/me/library/contains?${params.toString()}`, {
+      scopes: { allOf: [SCOPE_LIBRARY_READ] },
+    });
+    if (!Array.isArray(saved) || saved.length !== uris.length) {
+      throw new Error('Spotify returned an unexpected saved-items response.');
+    }
+    return saved;
+  }
+
+  /** `PUT /me/library` for up to 40 URIs. Never retried after an unknown outcome. */
+  public async saveToLibrary(uris: string[]): Promise<void> {
+    this.assertLibraryBatch(uris);
+    const params = new URLSearchParams({ uris: uris.join(',') });
+    await this.request<void>(`/me/library?${params.toString()}`, {
+      method: 'PUT',
+      scopes: { allOf: [SCOPE_LIBRARY_MODIFY] },
+    });
+  }
+
   // ---- Internals --------------------------------------------------------
+
+  private search(
+    query: string,
+    type: 'show' | 'episode',
+    options: ISearchPodcastOptions,
+  ): Promise<ISpotifySearchResponse> {
+    const params = new URLSearchParams({
+      q: query,
+      type,
+      limit: String(clamp(options.limit ?? 5, 1, 10)),
+      offset: String(clamp(options.offset ?? 0, 0, 1000)),
+    });
+    if (options.market) {
+      params.set('market', options.market);
+    }
+    return this.request<ISpotifySearchResponse>(`/search?${params.toString()}`);
+  }
 
   private pageParams(options: IPageOptions, maxLimit: number): URLSearchParams {
     return new URLSearchParams({

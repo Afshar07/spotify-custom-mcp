@@ -42,7 +42,7 @@ describe('local stdio MCP server', () => {
   it('starts over stdio, lists all tools, and answers validation errors without touching Spotify', async () => {
     await withServer({}, async (client, stderr) => {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(21);
+      expect(tools).toHaveLength(28); // 21 existing + 7 podcast tools
       expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(['search_tracks', 'generate_playlist', 'suggest_playlist_flow']));
 
       const result = await client.callTool({ name: 'add_playlist_items', arguments: { playlistId: 'p', uris: ['nope'] } });
@@ -59,7 +59,7 @@ describe('local stdio MCP server', () => {
   it('honors SPOTIFY_DISABLED_TOOLS', async () => {
     await withServer({ SPOTIFY_DISABLED_TOOLS: 'get_top_items, generate_playlist' }, async (client) => {
       const names = (await client.listTools()).tools.map((tool) => tool.name);
-      expect(names).toHaveLength(19);
+      expect(names).toHaveLength(26);
       expect(names).not.toContain('get_top_items');
       expect(names).not.toContain('generate_playlist');
     });

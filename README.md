@@ -44,6 +44,20 @@ All mutation tools accept `dryRun` and (except Liked Songs) `expectedSnapshotId`
 | `get_artist_albums` | An artist's albums/singles, filterable by `includeGroups` and `market`; deluxe/remaster editions on the page are collapsed by default. |
 | `get_album_tracks` | Track URIs, durations, track/disc numbers and explicit flags for an album. |
 
+### Podcasts
+
+Podcasts are separate from music: shows have `spotify:show:` IDs, episodes have `spotify:episode:` URIs, and episode tools never accept track URIs (or the reverse). Use `search_tracks` / `add_liked_tracks` for songs.
+
+| Tool | Purpose |
+| --- | --- |
+| `search_podcasts` | Search shows (`GET /search?type=show`, ≤10 per call, `offset`, `market`). |
+| `search_episodes` | Search episodes (`type=episode`); returns episode URIs, show, duration, release date, Spotify link. |
+| `get_podcast_details` | One show's description, languages, episode count and link. |
+| `get_podcast_episodes` | One bounded page (≤50) of a show's episodes. `sort=newest`/`oldest` reorders **only the returned page** (Spotify has no server-side sort); `includeShow=false` skips the show lookup on later pages. |
+| `get_saved_episodes` | Saved episodes (`GET /me/episodes`), bounded by `maxItems` (≤500), with `savedAt` and an optional text filter over what was retrieved. Not listening history. |
+| `get_saved_podcasts` | Saved/followed shows (`GET /me/shows`), bounded and filterable. |
+| `save_episode` | Save 1–100 episode URIs (`PUT /me/library`, batches of 40). Reads first, skips already-saved and duplicate URIs. **`dryRun` defaults to `true`.** |
+
 ### Smart curation (deterministic, no LLM inside)
 
 | Tool | Purpose |
@@ -74,7 +88,7 @@ Without the required input the tool returns `status: "needs_input"`; it never gu
 2. Add this redirect URI exactly (not `localhost`): `http://127.0.0.1:8888/callback`
 3. Copy the Client ID and Client Secret.
 
-### Development Mode: what to expect
+## Development Mode: what to expect
 
 Apps start in Spotify's **Development Mode**, which this project treats as the supported environment. Per Spotify's current documentation (February 2026 changes):
 
@@ -114,9 +128,11 @@ Open the printed URL, approve access, and copy the printed `SPOTIFY_REFRESH_TOKE
 | --- | --- |
 | `playlist-modify-public`, `playlist-modify-private` | creating and changing playlists and their items |
 | `playlist-read-private`, `playlist-read-collaborative` | `list_my_playlists`, reading private/collaborative playlist contents |
-| `user-library-read`, `user-library-modify` | `get_liked_tracks`, `add_liked_tracks` |
+| `user-library-read`, `user-library-modify` | `get_liked_tracks`, `add_liked_tracks`, `get_saved_episodes`, `get_saved_podcasts`, `save_episode` |
 | `user-top-read` | `get_top_items` |
 | `user-read-recently-played` | `get_recently_played` |
+
+No new scopes were added for podcasts, so existing refresh tokens that already include the library scopes keep working; run `npm run auth` again only if `user-library-read`/`user-library-modify` were never granted. `user-read-playback-position` is deliberately **not** requested (it only populates `resume_point`).
 
 Don't want a feature? Set `SPOTIFY_DISABLED_TOOLS` to hide its tools. If a scope is simply not granted, only the tools that need it return a scope error; the rest keep working.
 
@@ -218,6 +234,16 @@ The assistant uses `search_tracks` to collect URIs, `generate_playlist` (dry run
 
 For an energy build, have the assistant score each track (0–10) from its own knowledge and pass `scores` with `strategy: "gradual_build"`; the server only sorts by the scores you give it.
 
+## Podcast workflows
+
+**Discover technical podcasts** — "Find podcasts about AI coding agents, developer tooling and software architecture." → `search_podcasts` (one call per topic) → `get_podcast_episodes` for promising shows → recommend with the returned Spotify links.
+
+**Find recent episodes** — "Find recent episodes about Vue and Nuxt." → `search_episodes` (+ `get_podcast_episodes` with `sort: "newest"`) → compare `releaseDate`. Search returns at most 10 results per call, so the assistant should say how many pages it covered rather than claim completeness or freshness.
+
+**Curate a listening collection** — "Find 10 episodes about practical AI development and save them." → `search_episodes` → `save_episode` with `dryRun: true` (default) → show `newlySavedUris` / `alreadySavedUris` → only after you approve, call again with `dryRun: false`.
+
+**Explore saved episodes** — "Look through my saved episodes for software architecture." → `get_saved_episodes` with `query` (and `nextOffset` to continue). The filter only sees retrieved items.
+
 ## Safety model
 
 - **Dry runs never mutate.** `dryRun: true` performs reads only. `generate_playlist` and `suggest_playlist_flow` default to a dry run; the other mutation tools default to `false` to keep their original behavior.
@@ -257,7 +283,19 @@ On HTTP 429 the client waits for `Retry-After` (minimum 1 s) and retries up to 3
 - `get_artist_albums` collapses editions only within the returned page.
 - `suggest_playlist_flow` can't apply an order to a playlist containing unavailable items without URIs (preview works), and refuses orders needing more than 200 reorder calls.
 - Removing duplicates with `remove_playlist_items` removes every copy of a URI.
+- Podcasts: Spotify deprecated show `publisher` and `available_markets`, so publisher is often missing; descriptions are truncated to 300 characters; episodes with `playable: false` are restricted in your market (pass `market`). Search is capped at 10 results per call and 1000 offset.
+- Podcasts: `get_podcast_episodes` sorts only the returned page, `get_saved_episodes`/`get_saved_podcasts` are bounded to `maxItems`, and nothing downloads audio or transcripts (Spotify provides neither).
+- Podcast endpoints were checked against Spotify's February 2026 changelog and mocked in tests; behavior against a real Development Mode account is unverified until the podcast smoke test is run.
 - Refresh-token rotation is reported on stderr but not persisted.
+
+## Podcast smoke test (real account, manual)
+
+Automated tests never touch Spotify. After `npm run build`, ask your MCP client, in order:
+
+1. "Search podcasts for 'software architecture'" — expect shows with links.
+2. "List the 5 newest episodes of the first show" — expect `nextOffset` and release dates.
+3. "Show my saved episodes" — a `403` means re-run `npm run auth`.
+4. "Save `<episode URI>` to my library" — expect a dry-run preview; confirm, then repeat with `dryRun: false` and verify in the Spotify app. Re-running should report it under `alreadySavedUris`.
 
 ## Development
 

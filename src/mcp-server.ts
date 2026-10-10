@@ -5,6 +5,7 @@ import { registerDiscoveryTools } from './tools/discovery.js';
 import { registerLegacyTools } from './tools/legacy.js';
 import { registerLibraryTools } from './tools/library.js';
 import { registerPlaylistTools } from './tools/playlists.js';
+import { registerPodcastTools } from './tools/podcasts.js';
 import type { IToolContext } from './tools/shared.js';
 
 export const SERVER_NAME = 'spotify-custom-mcp';
@@ -35,6 +36,7 @@ export function createMcpServer(spotify: SpotifyClient, options: IMcpServerOptio
   registerLibraryTools(context);
   registerDiscoveryTools(context);
   registerCurationTools(context);
+  registerPodcastTools(context);
 
   return server;
 }
