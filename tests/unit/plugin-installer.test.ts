@@ -18,6 +18,18 @@ async function fixture(fail = false) {
   return { home, installer, config, original };
 }
 describe('one-click plugin upgrade', () => {
+  it('archives the standalone name so a disabled registration cannot mask the plugin server', async () => {
+    const { installer, config } = await fixture();
+    const installed = await installer.install();
+    const document = parse(await readFile(config, 'utf8')) as any;
+    expect(document.mcp_servers['spotify-curator']).toBeUndefined();
+    expect(document.mcp_servers['spotify-curator-legacy'].enabled).toBe(false);
+    const launch = JSON.parse(await readFile(join(installed.pluginPath, 'mcp.json'), 'utf8')).mcpServers['spotify-curator'];
+    const env = await legacyMcpEnvironment(config, launch.env.SPOTIFY_CURATOR_LEGACY_ENTRY, launch.env);
+    expect(env.SPOTIFY_REFRESH_TOKEN).toBe('test-private-token');
+    await installer.install();
+    expect((await installer.connectionEnvironment()).SPOTIFY_REFRESH_TOKEN).toBe('test-private-token');
+  });
   it('generates a portable executable name with the installed directory in the launch PATH', async () => {
     const { installer } = await fixture();
     const installed = await installer.install();
@@ -42,8 +54,8 @@ describe('one-click plugin upgrade', () => {
     const document = parse(await readFile(config, 'utf8')) as any;
     expect(document.model).toBe('keep-me');
     expect(document.mcp_servers.other.command).toBe('keep-other');
-    expect(document.mcp_servers['spotify-curator'].enabled).toBe(false);
-    expect(document.mcp_servers['spotify-curator'].env.SPOTIFY_REFRESH_TOKEN).toBe('test-private-token');
+    expect(document.mcp_servers['spotify-curator-legacy'].enabled).toBe(false);
+    expect(document.mcp_servers['spotify-curator-legacy'].env.SPOTIFY_REFRESH_TOKEN).toBe('test-private-token');
     expect(document.plugins['spotify-curator@spotify-curator-local'].enabled).toBe(true);
     const mcp = await readFile(join(result.pluginPath, 'mcp.json'), 'utf8');
     expect(mcp).not.toContain('test-private-token');
@@ -79,7 +91,7 @@ describe('one-click plugin upgrade', () => {
   it('reuses private legacy environment values at runtime rather than copying them into the plugin', async () => {
     const { installer, config } = await fixture();
     await installer.install();
-    const env = await legacyMcpEnvironment(config, 'spotify-curator', { KEEP: 'kept' });
+    const env = await legacyMcpEnvironment(config, 'spotify-curator-legacy', { KEEP: 'kept' });
     expect(env.KEEP).toBe('kept');
     expect(env.SPOTIFY_REFRESH_TOKEN).toBe('test-private-token');
   });
@@ -110,7 +122,7 @@ describe('one-click plugin upgrade', () => {
     expect(verifiedToken).toBe('test-inherited-private');
     const mcp = JSON.parse(await readFile(join(installed.pluginPath, 'mcp.json'), 'utf8'));
     expect(JSON.stringify(mcp)).not.toContain('test-inherited-private');
-    const env = await legacyMcpEnvironment(config, 'spotify-curator', mcp.mcpServers['spotify-curator'].env, protector);
+    const env = await legacyMcpEnvironment(config, 'spotify-curator-legacy', mcp.mcpServers['spotify-curator'].env, protector);
     expect(env.SPOTIFY_REFRESH_TOKEN).toBe('test-inherited-private');
   });
 });

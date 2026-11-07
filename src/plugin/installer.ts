@@ -9,6 +9,8 @@ import { WindowsDpapiProtector } from '../auth/credential-store.js';
 import type { ISecretProtector } from '../models/auth.js';
 
 const NAME = 'spotify-curator';
+const LEGACY_NAME = 'spotify-curator-legacy';
+const LEGACY_ENTRY_PATTERN = /^spotify[-_]curator(?:-legacy)?$/i;
 const REQUIRED_TOOLS = ['generate_playlist', 'set_playlist_cover', 'get_history_status'];
 const RESOURCE_FILES = ['plugin.json', '.codex-plugin/plugin.json',
   ...['music-curation', 'playlist-management', 'podcast-discovery', 'setup'].map((name) => `skills/${name}/SKILL.md`)];
@@ -141,10 +143,12 @@ export class PluginInstaller {
       const servers = { ...record(document.mcp_servers) };
       const entries = Object.entries(servers).filter(([name, value]) => {
         const entry = record(value);
-        return /^spotify[-_]curator$/i.test(name) && typeof entry.command === 'string';
+        return LEGACY_ENTRY_PATTERN.test(name) && typeof entry.command === 'string';
       });
       if (entries.length > 1) throw new Error('Multiple legacy Spotify Curator entries were found. Choose one connection before upgrading.');
-      const legacyName = entries[0]?.[0] ?? 'spotify-curator';
+      const previousLegacyName = entries[0]?.[0] ?? NAME;
+      const legacyName = entries.length ? LEGACY_NAME : NAME;
+      if (previousLegacyName !== LEGACY_NAME && servers[LEGACY_NAME] !== undefined) throw new Error('The archived Spotify Curator name is already in use. No connection was changed.');
       const beforeMarket = await optionalFile(this.marketplacePath);
       const market = parseMarketplace(beforeMarket);
       const source = this.options.sourceDir ?? join(dirname(this.options.executablePath), 'plugin');
@@ -174,7 +178,7 @@ export class PluginInstaller {
       // Portable Agent Plugins reject absolute commands. Resolve the installed executable
       // through this process-specific PATH, without changing the user's system PATH.
       const command = [basename(this.options.executablePath), 'plugin-mcp'];
-      const verification = await (this.options.handshake ?? performMcpHandshake)(command, { env: { ...inherited, ...env } });
+      const verification = await (this.options.handshake ?? performMcpHandshake)(command, { env: { ...inherited, ...env, SPOTIFY_CURATOR_LEGACY_ENTRY: previousLegacyName } });
       if (verification.serverName !== 'spotify-custom-mcp' || REQUIRED_TOOLS.some((tool) => !verification.toolNames.includes(tool))) throw new Error('The new Spotify Curator server could not verify its plugin tools. The old connection was kept.');
       const files: IFileChange[] = [];
       if (envNames.length) {
@@ -204,7 +208,12 @@ export class PluginInstaller {
       const entry = { name: NAME, source: { source: 'local', path }, policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity' };
       if (existing >= 0) plugins[existing] = entry; else plugins.push(entry);
       files.push({ path: this.marketplacePath, before: beforeMarket, after: JSON.stringify({ ...market, plugins }, null, 2) + '\n' });
-      for (const [name, value] of entries) servers[name] = { ...record(value), enabled: false };
+      // Codex gives standalone entries priority even when disabled. Archive under
+      // a distinct name so it remains a credential source without hiding the plugin.
+      for (const [name, value] of entries) {
+        delete servers[name];
+        servers[legacyName] = { ...record(value), enabled: false };
+      }
       const pluginKey = `${NAME}@${market.name}`;
       const pluginSettings = { ...record(document.plugins) };
       const previous = record(pluginSettings[pluginKey]);
@@ -242,7 +251,7 @@ export class PluginInstaller {
   }
   public async connectionEnvironment(): Promise<NodeJS.ProcessEnv> {
     const document = parseToml(await optionalFile(this.configPath) ?? '');
-    const names = Object.keys(record(document.mcp_servers)).filter((name) => /^spotify[-_]curator$/i.test(name));
+    const names = Object.keys(record(document.mcp_servers)).filter((name) => LEGACY_ENTRY_PATTERN.test(name));
     return legacyMcpEnvironment(this.configPath, names[0] ?? NAME,
       { ...this.options.env, SPOTIFY_CURATOR_LEGACY_ENV_FILE: join(this.options.dataDir, 'plugin-legacy-environment.bin') }, this.options.protector);
   }
@@ -267,7 +276,7 @@ export class PluginInstaller {
         const savedConfig = migration.files.find((file) => file.path === this.configPath);
         const migratedServers = record(parseToml(savedConfig?.after ?? '').mcp_servers);
         for (const [name, value] of Object.entries(servers)) {
-          if (/^spotify[-_]curator$/i.test(name) && record(value).enabled === false
+          if (LEGACY_ENTRY_PATTERN.test(name) && record(value).enabled === false
             && JSON.stringify(value) === JSON.stringify(migratedServers[name])) delete servers[name];
         }
       }

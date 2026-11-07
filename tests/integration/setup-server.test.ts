@@ -84,7 +84,7 @@ describe('setup server flow (mock Spotify, mock handshake)', () => {
     expect(text).toContain('keep-private-source');
     const { parse } = await import('@decimalturn/toml-patch');
     const document = parse(text) as any;
-    expect(document.mcp_servers['spotify-curator'].enabled).toBe(false);
+    expect(document.mcp_servers['spotify-curator-legacy'].enabled).toBe(false);
     expect(document.plugins['spotify-curator@spotify-curator-local'].enabled).toBe(true);
   });
   it('upgrades through one API action and imports optional history independently of Spotify credentials', async () => {

@@ -24,7 +24,10 @@ The upgrade merges the personal marketplace at
 `~/.agents/plugins/marketplace.json`, registers resources under
 `~/.codex/plugins/spotify-curator-local/<version>/`, enables
 `spotify-curator@<existing-marketplace-name>`, and disables the matching old
-desktop MCP entry. OpenCode remains a standalone MCP client. Plugin files
+desktop MCP entry after moving it to `spotify-curator-legacy`. The distinct
+archive name keeps a disabled standalone entry from masking the plugin server;
+its private connection settings remain available to the plugin at runtime.
+OpenCode remains a standalone MCP client. Plugin files
 launch the installed Curator executable by its bare name with the installation
 folder prepended to the server's own `PATH`, so keep the app installed. Portable
 Agent Plugins reject absolute executable commands. Verification uses this same
