@@ -33,11 +33,11 @@ Upgrading: run a newer installer over the old one. Credentials and settings live
 
 - [ ] Bump `version` in `package.json` **and** `src/version.ts` (a test enforces they match).
 - [ ] `npm run typecheck && npm run typecheck:tests && npm test` green.
-- [ ] CI `Windows installer` workflow green (builds the executable and installer, generates checksums, and uploads artifacts; no tests or type checks run in CI).
+- [ ] CI `Windows installer` workflow green after publishing a release (builds the executable and installer, generates checksums, uploads artifacts, and attaches the installer and checksums to that release; no tests or type checks run in CI).
 - [ ] Manual acceptance on a clean Windows 11 VM (below).
 - [ ] Download the CI artifact, confirm `SHA256SUMS.txt`, scan for secrets (none should be present: only the exe is packaged).
 - [ ] Sign installer and exe (when a certificate exists).
-- [ ] Create the GitHub release **manually, with owner approval**; CI never publishes.
+- [ ] Create and publish the GitHub release **manually, with owner approval**; CI then builds and attaches the installer and checksums to the existing release.
 
 ## Manual acceptance (clean Windows 11, no Node/Git) — status: NOT YET RUN
 

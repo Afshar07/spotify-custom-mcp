@@ -1,14 +1,11 @@
 name: Windows installer
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -37,3 +34,11 @@ jobs:
             dist-installer/*.exe
             dist-installer/SHA256SUMS.txt
           if-no-files-found: error
+      - name: Attach installer and checksums to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $assets = (Get-ChildItem dist-installer\*.exe).FullName
+          gh release upload "$env:RELEASE_TAG" @assets dist-installer\SHA256SUMS.txt --repo "$env:GITHUB_REPOSITORY" --clobber
