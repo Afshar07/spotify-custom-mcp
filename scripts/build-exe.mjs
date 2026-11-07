@@ -5,12 +5,16 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { cpSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
-const outDir = 'build';
+const outDir = process.env.SPOTIFY_CURATOR_BUILD_DIR ?? 'build';
+// Output cleanup must stay in a named build folder beneath this checkout.
+if (!/^build(?:-[a-z0-9-]+)?$/.test(outDir)) throw new Error('Build output must be build or build-<name> within the project.');
 const exeName = process.platform === 'win32' ? 'spotify-curator.exe' : 'spotify-curator';
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
+cpSync('plugins/spotify-curator', join(outDir, 'plugin'), { recursive: true });
 
 await build({
   entryPoints: ['src/cli.ts'],

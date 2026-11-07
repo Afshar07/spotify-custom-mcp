@@ -89,6 +89,7 @@ export function registerCurationTools({ registerTool, spotify }: IToolContext): 
         verifyCandidates: z.boolean().default(true),
         allowPartial: z.boolean().default(false),
         allowDuplicateName: z.boolean().default(false),
+        coverArt: z.boolean().default(true).describe('Generate and upload contextual artwork after creation using the returned cover workflow; false opts out.'),
         intent: z
           .object({
             mood: z.string().optional(),

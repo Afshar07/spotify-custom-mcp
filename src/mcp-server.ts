@@ -8,6 +8,10 @@ import { registerLibraryTools } from './tools/library.js';
 import { registerPlaylistTools } from './tools/playlists.js';
 import { registerPodcastTools } from './tools/podcasts.js';
 import type { IToolContext } from './tools/shared.js';
+import { HistoryStore } from './history/store.js';
+import { getDataDir } from './auth/app-paths.js';
+import { registerHistoryTools } from './tools/history.js';
+import { registerCoverTools } from './tools/covers.js';
 
 export const SERVER_NAME = 'spotify-custom-mcp';
 export const SERVER_VERSION = APP_VERSION;
@@ -15,6 +19,7 @@ export const SERVER_VERSION = APP_VERSION;
 export interface IMcpServerOptions {
   /** Tool names to leave unregistered (e.g. features whose scopes were not granted). */
   disabledTools?: string[];
+  history?: HistoryStore;
 }
 
 /** Builds the MCP server without connecting a transport, so tests can attach one. */
@@ -38,6 +43,8 @@ export function createMcpServer(spotify: SpotifyClient, options: IMcpServerOptio
   registerDiscoveryTools(context);
   registerCurationTools(context);
   registerPodcastTools(context);
+  registerCoverTools(context);
+  registerHistoryTools(context, options.history ?? new HistoryStore(getDataDir()));
 
   return server;
 }

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "spotify-curator": { "command": "spotify-curator", "args": ["mcp"] }
+  }
+}

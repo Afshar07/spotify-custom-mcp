@@ -270,6 +270,7 @@ export async function generatePlaylist(
       public: input.public,
       trackUris: plan.selected.map((track) => track.uri),
       allowDuplicateName: input.allowDuplicateName,
+      coverArt: input.coverArt,
     },
     false,
   );

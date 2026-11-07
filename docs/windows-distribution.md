@@ -2,6 +2,13 @@
 
 ## Install (end users)
 
+For v0.4 plugin migration, install the updated package over the current app,
+then choose **Upgrade to plugin** in Setup. Sign-in remains in the per-user
+data directory. The installer ships `plugin/` resources beside the executable.
+See [plugin migration and optional history](plugin.md). This requires neither
+new Spotify credentials nor an image-provider key; cover upload permission
+may need one browser consent step.
+
 1. Download `SpotifyCurator-Setup-<version>.exe` from the project's release/CI artifact and run it. It installs per user to `%LOCALAPPDATA%\Programs\SpotifyCurator`; no administrator rights are needed.
 2. Spotify Curator Setup opens in your browser (also in Start menu → *Spotify Curator Setup*).
 3. Create a free Spotify developer app (the wizard explains how), add `http://127.0.0.1:8888/callback` as its Redirect URI, add your Spotify account under *User management*, and paste the **Client ID** (no Client Secret is needed or stored).

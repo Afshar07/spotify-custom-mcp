@@ -1,4 +1,11 @@
-# Spotify Smart Playlist Curator (MCP)
+# Spotify Curator — plugin and MCP
+
+Version 0.4 adds a local Codex/ChatGPT Desktop plugin: Spotify MCP tools plus
+skills for personal music, playlist management and podcasts. Existing users
+can choose **Upgrade to plugin** in Setup and restart their AI app, reusing
+their Spotify connection. New playlists include a contextual cover workflow;
+local Extended Streaming History import is optional. See [plugin setup and
+migration](docs/plugin.md).
 
 A local, stdio [MCP](https://modelcontextprotocol.io) server that lets an AI assistant (OpenCode or any MCP client) explore Spotify, learn from your listening, create playlists, analyze and compare them, and propose better track orders.
 

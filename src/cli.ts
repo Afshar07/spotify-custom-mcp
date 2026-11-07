@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openInDefaultBrowser } from './auth/open-browser.js';
 import { runDiagnostics } from './diagnostics.js';
@@ -8,6 +8,8 @@ import { EClientConflictPolicy } from './models/client-adapter.js';
 import { AppContext } from './setup/app-context.js';
 import { startSetupServer } from './setup/setup-server.js';
 import { APP_NAME, APP_VERSION } from './version.js';
+import { legacyMcpEnvironment } from './plugin/installer.js';
+import { getDataDir } from './auth/app-paths.js';
 
 const IDLE_EXIT_MS = 30 * 60_000;
 
@@ -18,6 +20,9 @@ Usage: spotify-curator [command]
   (no command)          Open the setup wizard
   setup                 Open the setup wizard
   mcp                   Run the MCP server over stdio (used by AI apps)
+  plugin-mcp            Run the plugin MCP, reusing the prior Spotify connection
+  install-plugin        Upgrade this PC to the Spotify Curator plugin
+  rollback-plugin       Undo the last plugin migration without removing sign-in
   status [--json]       Show Spotify and integration status
   doctor [--json]       Run diagnostics
   connect               Connect Spotify from the command line
@@ -42,7 +47,17 @@ async function main(argv: string[]): Promise<number> {
   const [command = 'setup', ...flags] = argv;
   const has = (flag: string): boolean => flags.includes(flag);
 
-  if (command === 'mcp') {
+  if (command === 'mcp' || command === 'plugin-mcp') {
+    if (command === 'plugin-mcp' && process.env.SPOTIFY_CURATOR_LEGACY_CONFIG) {
+      const legacy = await legacyMcpEnvironment(process.env.SPOTIFY_CURATOR_LEGACY_CONFIG,
+        process.env.SPOTIFY_CURATOR_LEGACY_ENTRY ?? 'spotify-curator', process.env);
+      Object.assign(process.env, legacy);
+      if (await readFile(join(getDataDir(), 'plugin-prefer-pkce'), 'utf8').catch(() => '') === 'true') {
+        // Browser consent upgraded this installation to the per-user secure store.
+        delete process.env.SPOTIFY_CLIENT_SECRET;
+        delete process.env.SPOTIFY_REFRESH_TOKEN;
+      }
+    }
     await startMcpServer(); // stdout is protocol-only from here on; nothing else may print.
     return -1; // keep running
   }
@@ -61,6 +76,16 @@ async function main(argv: string[]): Promise<number> {
   };
 
   switch (command) {
+    case 'install-plugin': {
+      const result = await app.plugin.install();
+      print(result, `Spotify Curator plugin configured (${result.toolCount} tools). Restart Codex or ChatGPT Desktop to load the plugin. Your Spotify sign-in was preserved.`);
+      return 0;
+    }
+    case 'rollback-plugin': {
+      await app.plugin.rollback();
+      process.stdout.write('Previous connection settings restored. Restart your AI app. Spotify sign-in was preserved.\n');
+      return 0;
+    }
     case 'setup': {
       if (process.platform === 'win32' && !has('--foreground')) {
         // Detach so the console window closes right away.
@@ -137,8 +162,10 @@ async function main(argv: string[]): Promise<number> {
         }
       }
       if (has('--opencode')) await clean('the OpenCode entry', () => app.openCode.uninstall());
+      if (has('--chatgpt')) await clean('the Spotify Curator plugin registration', () => app.plugin.uninstall());
       if (has('--chatgpt')) await clean('the ChatGPT Desktop entry', () => app.chatGpt.uninstall());
       if (has('--credentials')) await clean('the saved Spotify sign-in', () => app.credentialStore().delete());
+      if (has('--credentials')) await clean('the migrated private environment', () => rm(join(app.dataDir, 'plugin-legacy-environment.bin'), { force: true }));
       if (has('--settings')) {
         await clean('Spotify Curator settings', () => rm(join(app.dataDir, 'settings.json'), { force: true }));
         await clean('Spotify Curator backups', () => rm(join(app.dataDir, 'backups'), { recursive: true, force: true }));

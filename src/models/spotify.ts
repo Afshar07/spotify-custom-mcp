@@ -165,6 +165,8 @@ export interface ISpotifyScopeRequirement {
 export interface ISpotifyRequestOptions {
   method?: TSpotifyHttpMethod;
   body?: unknown;
+  rawBody?: string;
+  contentType?: string;
   scopes?: ISpotifyScopeRequirement;
 }
 

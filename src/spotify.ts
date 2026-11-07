@@ -51,6 +51,8 @@ import {
   SCOPE_TOP_READ,
 } from './scopes.js';
 import { collectPages } from './utils/pagination.js';
+import { SCOPE_IMAGE_UPLOAD } from './scopes.js';
+import { validateCoverJpeg } from './services/playlist-cover.js';
 
 export type * from './models/spotify.js';
 
@@ -203,6 +205,14 @@ export class SpotifyClient {
   }
 
   // ---- Playlists: writes ------------------------------------------------
+
+  public async uploadPlaylistCover(playlistId: string, jpegBase64: string): Promise<void> {
+    validateCoverJpeg(jpegBase64);
+    await this.request<void>(`/playlists/${encodeURIComponent(playlistId)}/images`, {
+      method: 'PUT', rawBody: jpegBase64, contentType: 'image/jpeg',
+      scopes: { allOf: [SCOPE_IMAGE_UPLOAD], anyOf: [SCOPE_PLAYLIST_MODIFY_PUBLIC, SCOPE_PLAYLIST_MODIFY_PRIVATE] },
+    });
+  }
 
   public async createPlaylist(options: ICreatePlaylistOptions): Promise<ISpotifyPlaylist> {
     return this.request<ISpotifyPlaylist>('/me/playlists', {
@@ -570,11 +580,11 @@ export class SpotifyClient {
           method,
           headers: {
             Authorization: `Bearer ${token}`,
-            ...(options.body !== undefined
-              ? { 'Content-Type': 'application/json' }
+            ...(options.body !== undefined || options.rawBody !== undefined
+              ? { 'Content-Type': options.contentType ?? 'application/json' }
               : {}),
           },
-          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+          body: options.rawBody ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch (error) {

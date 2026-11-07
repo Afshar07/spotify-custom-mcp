@@ -1,0 +1,12 @@
+{
+  "name": "spotify-curator",
+  "version": "0.4.0",
+  "description": "Personal music and podcast curation with optional local history and playlist covers.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "onboardingSkill": "./skills/setup/SKILL.md",
+  "interface": {
+    "displayName": "Spotify Curator",
+    "shortDescription": "Personal playlists, covers, and listening history"
+  }
+}

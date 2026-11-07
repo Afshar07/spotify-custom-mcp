@@ -8,16 +8,20 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { describe, expect, it } from 'vitest';
 
 // Run `npm run build:exe` first. CI sets REQUIRE_STANDALONE=1 so a missing build fails instead of skipping.
-const exe = resolve('build', process.platform === 'win32' ? 'spotify-curator.exe' : 'spotify-curator');
+const exe = process.env.SPOTIFY_CURATOR_TEST_EXE ?? resolve('build', process.platform === 'win32' ? 'spotify-curator.exe' : 'spotify-curator');
 const available = existsSync(exe);
 if (!available && process.env.REQUIRE_STANDALONE === '1') throw new Error(`Standalone build missing: ${exe}`);
 
 describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => {
-  const emptyPathEnv = async () => ({ PATH: '', Path: '', SPOTIFY_CURATOR_DATA_DIR: await mkdtemp(join(tmpdir(), 'curator-exe-')) });
+  const emptyPathEnv = async () => {
+    const home = await mkdtemp(join(tmpdir(), 'curator-exe-'));
+    await mkdir(join(home, 'data'));
+    return { PATH: '', Path: '', USERPROFILE: home, HOME: home, CODEX_HOME: join(home, '.codex'), SPOTIFY_CURATOR_DATA_DIR: join(home, 'data') };
+  };
 
   it('reports its version without Node installed', async () => {
     const env = await emptyPathEnv();
-    expect(execFileSync(exe, ['version'], { env, encoding: 'utf8' }).trim()).toBe('0.3.0');
+    expect(execFileSync(exe, ['version'], { env, encoding: 'utf8' }).trim()).toBe('0.4.0');
   }, 30_000); // Allow cold-start executable scanning on Windows, as for the MCP startup checks.
 
   it('serves MCP over stdio with clean stdout, lists all tools, and fails safely without Spotify auth', async () => {
@@ -29,7 +33,7 @@ describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => 
     await client.connect(transport);
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(28);
+      expect(tools).toHaveLength(32);
       expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(['search_tracks', 'generate_playlist', 'get_playlist_summary']));
       // Read-only tool with no credentials: must be a friendly error, never a Spotify mutation or crash.
       const result = await client.callTool({ name: 'search_tracks', arguments: { query: 'anything' } });
@@ -55,7 +59,7 @@ describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => 
   it('status works and never prints secrets', async () => {
     const env = await emptyPathEnv();
     const out = execFileSync(exe, ['status', '--json'], { env, encoding: 'utf8' });
-    expect(JSON.parse(out).version).toBe('0.3.0');
+    expect(JSON.parse(out).version).toBe('0.4.0');
     expect(out).not.toMatch(/refresh|access_token|secret/i);
   });
 
@@ -64,7 +68,7 @@ describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => 
     const configDir = join(baseEnv.SPOTIFY_CURATOR_DATA_DIR, 'codex');
     const env = { ...baseEnv, CODEX_HOME: configDir };
     const output = execFileSync(exe, ['install-chatgpt', '--json'], { env, encoding: 'utf8' });
-    expect(JSON.parse(output)).toMatchObject({ changed: true, verified: true, toolCount: 28 });
+    expect(JSON.parse(output)).toMatchObject({ changed: true, verified: true, toolCount: 32 });
     const config = await readFile(join(configDir, 'config.toml'), 'utf8');
     expect(config).not.toMatch(/refresh|access_token|secret/i);
     expect(JSON.parse(execFileSync(exe, ['status', '--json'], { env, encoding: 'utf8' })).chatgpt)
@@ -77,7 +81,7 @@ describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => 
   it('cleans requested local settings even when the desktop config prevents entry removal', async () => {
     const baseEnv = await emptyPathEnv();
     const configDir = join(baseEnv.SPOTIFY_CURATOR_DATA_DIR, 'codex');
-    await mkdir(configDir);
+    await mkdir(configDir, { recursive: true });
     const malformed = 'model = "unterminated';
     await writeFile(join(configDir, 'config.toml'), malformed);
     await writeFile(join(baseEnv.SPOTIFY_CURATOR_DATA_DIR, 'settings.json'), '{}');
@@ -86,4 +90,32 @@ describe.skipIf(!available)('standalone executable (no Node.js on PATH)', () => 
     expect(existsSync(join(baseEnv.SPOTIFY_CURATOR_DATA_DIR, 'settings.json'))).toBe(false);
     expect(await readFile(join(configDir, 'config.toml'), 'utf8')).toBe(malformed);
   });
+
+  it.each(['env', 'env_vars'])('migrates the real packaged launcher with %s credentials and unregisters its plugin on cleanup', async (kind) => {
+    const baseEnv = await emptyPathEnv();
+    await mkdir(baseEnv.CODEX_HOME, { recursive: true });
+    const configPath = join(baseEnv.CODEX_HOME, 'config.toml');
+    const credentials = { SPOTIFY_CLIENT_ID: 'legacy-client', SPOTIFY_CLIENT_SECRET: 'fake-secret', SPOTIFY_REFRESH_TOKEN: 'fake-refresh' };
+    const initialConfig = '[mcp_servers.spotify-curator]\ncommand="old-curator"\nargs=["mcp"]\n' + (kind === 'env_vars'
+      ? 'env_vars=["SPOTIFY_CLIENT_ID","SPOTIFY_CLIENT_SECRET","SPOTIFY_REFRESH_TOKEN"]\n'
+      : '[mcp_servers.spotify-curator.env]\nSPOTIFY_CLIENT_ID="legacy-client"\nSPOTIFY_CLIENT_SECRET="fake-secret"\nSPOTIFY_REFRESH_TOKEN="fake-refresh"\n');
+    await writeFile(configPath, initialConfig);
+    const output = JSON.parse(execFileSync(exe, ['install-plugin', '--json'], { env: { ...baseEnv, ...(kind === 'env_vars' ? credentials : {}) }, encoding: 'utf8' }));
+    expect(output).toMatchObject({ toolCount: 32, restartRequired: true });
+    expect(output.pluginPath.startsWith(baseEnv.USERPROFILE)).toBe(true);
+    const launch = JSON.parse(await readFile(join(output.pluginPath, 'mcp.json'), 'utf8')).mcpServers['spotify-curator'];
+    expect(JSON.stringify(launch)).not.toMatch(/fake-secret|fake-refresh/);
+    const transport = new StdioClientTransport({ command: launch.command, args: launch.args, env: { ...baseEnv, ...launch.env }, stderr: 'pipe' });
+    const client = new Client({ name: 'packaged-plugin-test', version: '1' });
+    try {
+      await client.connect(transport);
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('set_playlist_cover');
+      const result = await client.callTool({ name: 'get_history_status', arguments: {} });
+      expect(result.isError).not.toBe(true);
+    } finally { await client.close(); }
+    execFileSync(exe, ['cleanup', '--chatgpt'], { env: baseEnv });
+    const market = JSON.parse(await readFile(join(baseEnv.USERPROFILE, '.agents', 'plugins', 'marketplace.json'), 'utf8'));
+    expect(market.plugins).toHaveLength(0);
+    expect(await readFile(configPath, 'utf8')).not.toContain('enabled = true');
+  }, 30_000);
 });

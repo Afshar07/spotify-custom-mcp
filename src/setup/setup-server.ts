@@ -1,7 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { AuthError } from '../auth/auth-error.js';
-import { saveSettings } from '../auth/settings.js';
+import { saveSettings, writeFileAtomic } from '../auth/settings.js';
+import { join } from 'node:path';
 import { DEFAULT_REDIRECT_PORT, isPlausibleClientId, type SpotifyAuthService } from '../auth/spotify-auth-service.js';
 import { runDiagnostics } from '../diagnostics.js';
 import { buildGenericStdioConfig } from '../clients/generic-config.js';
@@ -64,6 +65,9 @@ export async function startSetupServer(app: AppContext, options: { port?: number
       redirectUri: `http://127.0.0.1:${settings?.redirectPort ?? DEFAULT_REDIRECT_PORT}/callback`,
       clientId: settings?.clientId ?? null,
       auth: status,
+      legacyConnectionDetected: await app.hasLegacyConnection(),
+      plugin: await app.plugin.status(),
+      history: await app.history.status(),
       clients: [
         { id: 'opencode', name: 'OpenCode', ...oc, registered: ocConfig.registered, upToDate: ocConfig.upToDate, conflicts: ocConfig.conflicts, problems: ocConfig.problems, valid: ocConfig.valid },
         { id: 'chatgpt-desktop', name: 'ChatGPT Desktop', ...gpt, ...(await app.chatGpt.inspect()), manualSteps: app.chatGpt.manualSteps(app.executablePath) },
@@ -88,6 +92,29 @@ export async function startSetupServer(app: AppContext, options: { port?: number
     const body = await readBody(request);
 
     switch (path) {
+      case '/api/history-choose':
+        return json(response, 200, { folder: await app.chooseHistoryFolder() });
+      case '/api/plugin-upgrade': {
+        try { return json(response, 200, { ok: true, ...await app.plugin.install() }); }
+        catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'Plugin upgrade failed. Your sign-in was kept.' }); }
+      }
+      case '/api/plugin-rollback': {
+        try { await app.plugin.rollback(); return json(response, 200, { ok: true }); }
+        catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'Could not restore previous connection settings.' }); }
+      }
+      case '/api/history-import': {
+        try {
+          if (typeof body.folder !== 'string' || body.folder.length > 4096) return json(response, 400, { error: 'Choose your extracted history folder.' });
+          return json(response, 200, await app.history.importFolder(body.folder));
+        } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'History import failed. The previous import was kept.' }); }
+      }
+      case '/api/history-refresh': {
+        try { return json(response, 200, await app.history.refresh()); }
+        catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'History refresh failed.' }); }
+      }
+      case '/api/history-clear':
+        await app.history.clear();
+        return json(response, 200, { connected: false, eventCount: 0 });
       case '/api/client-id': {
         const clientId = String(body.clientId ?? '').trim();
         if (!isPlausibleClientId(clientId)) {
@@ -103,7 +130,12 @@ export async function startSetupServer(app: AppContext, options: { port?: number
         job = { state: 'running' };
         void auth
           .authorize({ signal: abort.signal, onAuthorizeUrl: (url) => (job = { ...job, authorizeUrl: url }) })
-          .then((account) => (job = { state: 'done', account }))
+          .then(async (account) => {
+            const settings = await app.settings();
+            if (settings) await saveSettings(app.dataDir, settings);
+            await writeFileAtomic(join(app.dataDir, 'plugin-prefer-pkce'), 'true');
+            job = { state: 'done', account };
+          })
           .catch((error: unknown) => {
             job = { state: 'error', error: { code: error instanceof AuthError ? error.code : 'unexpected', message: error instanceof AuthError ? error.message : 'Something went wrong while connecting to Spotify. Please try again.' } };
           });

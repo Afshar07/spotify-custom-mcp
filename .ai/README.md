@@ -13,6 +13,7 @@ step 7, then follow the route exactly in order.
 | `spotify-integration.md` | changing Spotify requests, OAuth, token handling, paging, or playlist mutations |
 | `opencode-integration.md` | changing local OpenCode MCP setup or runtime behavior |
 | `../docs/windows-distribution.md` | changing the installer, packaging, release or acceptance process |
+| `../docs/plugin.md` | changing plugin packaging, migration, default covers or optional local music history |
 | `../docs/chatgpt-desktop.md` | touching local ChatGPT Desktop registration, verification, or manual acceptance |
 | `ongoing/README.md` | continuing an in-progress task; read only the matching task document |
 
@@ -23,6 +24,8 @@ step 7, then follow the route exactly in order.
 - Read only the files selected by the applicable task route or an exact user-named file.
 
 ## Task routes
+
+- Plugin, migration, cover or imported-history change: `project-overview.md` → `../docs/plugin.md` → applicable MCP/Spotify or packaging route → source.
 
 - Continuing in-progress work: `ongoing/README.md` → only the matching task document → source.
 - General implementation: `project-overview.md` → source.

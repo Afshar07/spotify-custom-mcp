@@ -33,6 +33,7 @@ UninstallDisplayIcon={app}\spotify-curator.exe
 
 [Files]
 Source: "..\build\spotify-curator.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\plugin\*"; DestDir: "{app}\plugin"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\Spotify Curator Setup"; Filename: "{app}\spotify-curator.exe"; Parameters: "setup"

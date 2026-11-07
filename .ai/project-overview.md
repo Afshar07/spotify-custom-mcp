@@ -20,6 +20,13 @@ small.
 
 ## Runtime flow
 
+The v0.4 plugin bundles this server with skills (`plugins/spotify-curator`).
+`src/plugin/installer.ts` handles local migration and rollback; `plugin-mcp`
+reuses private legacy environment settings. `src/history/` owns the optional
+per-user music index. Cover generation belongs to the host assistant, with
+JPEG validation/upload in the server. See `docs/plugin.md` for boundaries and
+acceptance limits. The index is a local file, not a hosted database.
+
 1. `src/server.ts` (dev) or `spotify-curator.exe mcp` (`src/cli.ts`) calls
    `startMcpServer` (`src/mcp-main.ts`): `createRuntimeSpotifyClient`
    (`src/runtime.ts`) picks credentials (env-var install, else PKCE settings +

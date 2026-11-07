@@ -55,6 +55,14 @@ sort/filter); `services/podcast-library.ts` holds `saveEpisodes`.
 
 ## Mutation workflow
 
+Plugin additions (v0.4): `get_history_status`, `get_listening_profile` and
+`check_tracks_in_history` read optional local music history; no Spotify calls.
+`set_playlist_cover` validates an owner-only JPEG upload, encoded payload at
+most 256 KB, `dryRun:true` by default, requiring `ugc-image-upload` and a playlist
+modification scope. Creation returns a pending cover workflow by default;
+`coverArt:false` opts out. Generation is performed by the host assistant, not
+by an image provider in the server. There are 32 tools total.
+
 For ordinary additions use `add_unique_playlist_items`. Re-read when a decision
 depends on current ordering or contents. Use removal, reorder and especially
 replacement only when the requested state is explicit. `replace_playlist_items`

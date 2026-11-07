@@ -47,14 +47,15 @@ export function registerPlaylistTools({ registerTool, spotify }: IToolContext): 
         public: z.boolean().default(false),
         trackUris: z.array(spotifyTrackUriSchema).max(100).default([]),
         allowDuplicateName: z.boolean().default(false),
+        coverArt: z.boolean().default(true).describe('Return a pending-cover workflow by default. Set false only when the user opts out of artwork.'),
         dryRun: z.boolean().default(false),
       },
     },
-    async ({ name, description, public: isPublic, trackUris, allowDuplicateName, dryRun }) => {
+    async ({ name, description, public: isPublic, trackUris, allowDuplicateName, dryRun, coverArt }) => {
       try {
         const result = await createPlaylistWithTracks(
           spotify,
-          { name, description, public: isPublic, trackUris, allowDuplicateName },
+          { name, description, public: isPublic, trackUris, allowDuplicateName, coverArt },
           dryRun,
         );
         return result.population.failed ? jsonErrorResult(result) : jsonResult(result);

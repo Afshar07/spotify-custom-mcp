@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "spotify-curator",
+  "version": "0.4.0",
+  "description": "Personal music and podcast curation with Spotify tools, contextual playlist covers, and optional local listening history.",
+  "repository": "https://github.com/Afshar07/spotify-custom-mcp",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "Spotify Curator",
+        "shortDescription": "Personal playlists, covers, and listening history",
+        "longDescription": "Curate music and podcasts, manage playlists, create contextual covers through your assistant, and optionally use a local Spotify Extended Streaming History export. Reuse your existing Spotify Curator sign-in.",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Create a playlist for my mood using my listening history.",
+          "Find podcasts that fit my taste."
+        ]
+      }
+    }
+  }
+}

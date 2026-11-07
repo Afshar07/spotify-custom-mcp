@@ -60,7 +60,7 @@ describe('podcast tool registration', () => {
     for (const tool of PODCAST_TOOLS) {
       expect(names).toContain(tool);
     }
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(32);
   });
 
   it('defaults save_episode to dryRun and caps search at 10', async () => {

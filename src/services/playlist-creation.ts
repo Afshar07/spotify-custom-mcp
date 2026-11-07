@@ -8,6 +8,7 @@ import type { ISpotifyPlaylist } from '../models/spotify.js';
 import type { SpotifyClient } from '../spotify.js';
 import { chunk, dedupePreservingOrder } from '../utils/uri.js';
 import { collectPages } from '../utils/pagination.js';
+import { pendingCover } from './playlist-cover.js';
 
 export const PLAYLIST_NAME_MAX_LENGTH = 100;
 export const PLAYLIST_DESCRIPTION_MAX_LENGTH = 300;
@@ -123,6 +124,7 @@ export async function createPlaylistWithTracks(
   });
 
   const result: ICreatePlaylistResult = {
+    ...(input.coverArt !== false ? { cover: pendingCover(name, input.description) } : {}),
     dryRun: false,
     created: true,
     playlist: {

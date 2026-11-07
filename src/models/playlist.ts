@@ -20,6 +20,7 @@ export interface IPlaylistListEntry {
 }
 
 export interface ICreatePlaylistInput {
+  coverArt?: boolean;
   name: string;
   description?: string;
   public: boolean;
@@ -48,6 +49,7 @@ export interface ICreatedPlaylist {
 }
 
 export interface ICreatePlaylistResult {
+  cover?: { status: 'pending'; prompt: string; nextStep: string };
   dryRun: boolean;
   created: boolean;
   playlist?: ICreatedPlaylist;
@@ -75,6 +77,7 @@ export interface IGenerationIntent {
 }
 
 export interface IGeneratePlaylistInput {
+  coverArt?: boolean;
   name: string;
   description?: string;
   public: boolean;

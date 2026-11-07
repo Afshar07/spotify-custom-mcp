@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -67,6 +67,45 @@ describe('setup server security', () => {
 });
 
 describe('setup server flow (mock Spotify, mock handshake)', () => {
+  it('keeps one desktop connection and its legacy credential source through diagnostics, repair and app setup after migration', async () => {
+    const { call, root } = await boot(async () => ({ serverName: 'spotify-custom-mcp', serverVersion: '0.4.0',
+      toolNames: ['generate_playlist', 'get_history_status', 'set_playlist_cover', 'search_tracks'] }));
+    const configPath = join(root, '.codex', 'config.toml');
+    await mkdir(join(root, '.codex'), { recursive: true });
+    await writeFile(configPath, '[mcp_servers.spotify-curator]\ncommand="legacy-curator"\nargs=["mcp"]\n[mcp_servers.spotify-curator.env]\nSPOTIFY_REFRESH_TOKEN="keep-private-source"\n');
+    expect((await call('/api/plugin-upgrade', {})).status).toBe(200);
+    const state = await (await call('/api/state')).json();
+    expect(state.clients.find((client: any) => client.id === 'chatgpt-desktop').upToDate).toBe(true);
+    const diagnostics = await (await call('/api/diagnostics', {})).json();
+    expect(diagnostics.checks.find((check: any) => check.id === 'chatgpt').status).toBe('pass');
+    expect((await (await call('/api/repair', { client: 'chatgpt-desktop' })).json()).ok).toBe(true);
+    expect((await (await call('/api/install', { clients: ['chatgpt-desktop'] })).json())['chatgpt-desktop'].verified).toBe(true);
+    const text = await readFile(configPath, 'utf8');
+    expect(text).toContain('keep-private-source');
+    const { parse } = await import('@decimalturn/toml-patch');
+    const document = parse(text) as any;
+    expect(document.mcp_servers['spotify-curator'].enabled).toBe(false);
+    expect(document.plugins['spotify-curator@spotify-curator-local'].enabled).toBe(true);
+  });
+  it('upgrades through one API action and imports optional history independently of Spotify credentials', async () => {
+    const { call, root, store } = await boot(async () => ({ serverName: 'spotify-custom-mcp', serverVersion: '0.3.0',
+      toolNames: ['generate_playlist', 'get_history_status', 'set_playlist_cover'] }));
+    const upgrade = await call('/api/plugin-upgrade', {});
+    expect(upgrade.status).toBe(200);
+    expect((await upgrade.json()).restartRequired).toBe(true);
+    expect(store.value).toBeNull(); // Migration never asks for or rewrites credentials.
+    expect((await (await call('/api/state')).json()).plugin.enabled).toBe(true);
+    const folder = join(root, 'export'); await mkdir(folder);
+    await writeFile(join(folder, 'Streaming_History_Audio_1.json'), JSON.stringify([{ ts: '2026-01-01T00:00:00Z', ms_played: 30000,
+      master_metadata_track_name: 'Rain', master_metadata_album_artist_name: 'Artist' }]));
+    expect((await call('/api/history-import', { folder })).status).toBe(200);
+    expect((await (await call('/api/state')).json()).history.eventCount).toBe(1);
+    expect((await call('/api/history-refresh', {})).status).toBe(200);
+    expect((await call('/api/history-clear', {})).status).toBe(200);
+    expect((await (await call('/api/state')).json()).history.connected).toBe(false);
+    expect((await call('/api/plugin-rollback', {})).status).toBe(200);
+    expect((await (await call('/api/state')).json()).plugin.enabled).toBe(false);
+  });
   it('validates and saves the Client ID, connects through PKCE, then reports connected', async () => {
     const { call, store, root } = await boot();
     expect((await call('/api/client-id', { clientId: 'short' })).status).toBe(400);

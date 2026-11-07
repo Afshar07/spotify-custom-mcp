@@ -37,6 +37,12 @@ declare no scopes, to stay compatible with older refresh tokens.
 
 ## Request handling
 
+v0.4 additionally requests `ugc-image-upload` for `PUT /playlists/{id}/images`
+(base64 JPEG body, `image/jpeg`, at most 256 KB encoded, success HTTP 202).
+Old refresh tokens remain usable for non-cover operations; browser consent
+with the existing Client ID grants the additional scope. The shared request
+transport sends image bodies verbatim rather than JSON-stringifying them.
+
 - Timeout 15 s per request (`AbortSignal.timeout`).
 - 401: clear token, refresh and retry once.
 - 429: wait `Retry-After` (min 1 s) and retry up to 3 times; stop with a

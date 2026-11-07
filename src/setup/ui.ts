@@ -39,6 +39,32 @@ details{margin-top:.5rem}pre{white-space:pre-wrap;word-break:break-all}
 <ol class="steps" id="steps" aria-label="Setup progress"></ol>
 <div id="live" role="status" aria-live="polite" class="muted"></div>
 
+<div class="card" id="pluginCard" aria-labelledby="pluginTitle">
+  <h2 id="pluginTitle">Spotify Curator plugin</h2>
+  <p>Bring your Spotify tools and curation skills together. Keep your current Spotify connection—no new keys or tokens to copy.</p>
+  <div id="pluginState" role="status" aria-live="polite"></div>
+  <div class="row">
+    <button class="primary" id="upgradePlugin" data-testid="upgrade-plugin">Upgrade to plugin</button>
+    <button id="undoPlugin" hidden>Undo upgrade</button>
+    <button id="enableCovers" hidden>Enable cover uploads</button>
+  </div>
+  <p class="muted">New playlists get creative covers through your assistant's image tools. Spotify may ask you to approve cover uploads once in your browser.</p>
+</div>
+
+<details class="card" id="historyCard">
+  <summary>Listening history (optional)</summary>
+  <p>Import your extracted Spotify Extended Streaming History folder for more personal recommendations. The music index stays on this PC. Your original files are left in place.</p>
+  <div id="historyState" role="status" aria-live="polite"></div>
+  <div class="row"><button id="chooseHistory" data-testid="choose-history">Choose folder</button></div>
+  <label for="historyFolder">History folder</label>
+  <input type="text" id="historyFolder" autocomplete="off" spellcheck="false" placeholder="Path to your extracted history folder">
+  <div class="row">
+    <button id="importHistory" data-testid="import-history">Import history</button>
+    <button id="refreshHistory" hidden>Refresh import</button>
+    <button id="clearHistory" hidden>Remove imported history</button>
+  </div>
+</details>
+
 <section id="s1" data-step="1" aria-labelledby="h1a">
   <h2 id="h1a">Welcome</h2>
   <p>Spotify Curator lets your AI assistant search Spotify, build playlists and organise them for you. Everything runs on this PC and your Spotify sign-in is stored securely for your Windows account only.</p>
@@ -128,7 +154,42 @@ function status(parent,ok,text,detail){
   var box=el('div');box.appendChild(el('span',text));if(detail)box.appendChild(el('div',detail,'muted'));row.appendChild(box);parent.appendChild(row);
 }
 function load(){return api('/api/state').then(function(s){data=s;return s})}
+function renderExtras(){
+  var p=data.plugin||{};
+  $('pluginState').textContent=p.enabled?'Plugin configured. Restart Codex or ChatGPT Desktop to load its skills and tools.':'Ready to upgrade your existing setup.';
+  $('upgradePlugin').textContent=p.enabled?'Repair plugin':'Upgrade to plugin';$('undoPlugin').hidden=!p.enabled;
+  $('enableCovers').hidden=!(data.clientId&&(data.auth.state==='connected'||data.legacyConnectionDetected)&&!(data.auth.scopes||[]).includes('ugc-image-upload'));
+  var h=data.history||{};
+  $('historyState').textContent=h.connected?h.eventCount.toLocaleString()+' music events imported through '+h.cutoff+'.':'No history imported. Spotify Curator works without it.';
+  $('refreshHistory').hidden=!h.connected;$('clearHistory').hidden=!h.connected;
+  if(h.sourceFolder)$('historyFolder').value=h.sourceFolder;
+}
+$('upgradePlugin').onclick=function(){
+  var b=$('upgradePlugin');b.disabled=true;$('pluginState').textContent='Checking and upgrading…';
+  api('/api/plugin-upgrade',{}).then(function(){return load()}).then(function(){renderExtras();say('Plugin configured. Restart your AI app to finish. Your Spotify sign-in was kept.')})
+    .catch(function(e){$('pluginState').textContent=e.message}).then(function(){b.disabled=false});
+};
+$('undoPlugin').onclick=function(){
+  var b=$('undoPlugin');b.disabled=true;
+  api('/api/plugin-rollback',{}).then(function(){return load()}).then(function(){renderExtras();say('Previous connection settings restored. Restart your AI app.')})
+    .catch(function(e){$('pluginState').textContent=e.message}).then(function(){b.disabled=false});
+};
+$('enableCovers').onclick=function(){show(3);$('connect').hidden=false;$('connect').textContent='Approve cover uploads';$('connect').click()};
+$('chooseHistory').onclick=function(){
+  var b=$('chooseHistory');b.disabled=true;
+  api('/api/history-choose',{}).then(function(r){if(r.folder)$('historyFolder').value=r.folder})
+    .catch(function(e){$('historyState').textContent=e.message}).then(function(){b.disabled=false});
+};
+function historyAction(button,path,body){
+  button.disabled=true;$('historyState').textContent='Updating local history…';
+  api(path,body).then(function(){return load()}).then(renderExtras)
+    .catch(function(e){$('historyState').textContent=e.message}).then(function(){button.disabled=false});
+}
+$('importHistory').onclick=function(){historyAction(this,'/api/history-import',{folder:$('historyFolder').value})};
+$('refreshHistory').onclick=function(){historyAction(this,'/api/history-refresh',{})};
+$('clearHistory').onclick=function(){historyAction(this,'/api/history-clear',{})};
 function renderOverview(){
+  renderExtras();
   var o=$('overview');o.textContent='';
   status(o,data.auth.state==='connected',data.auth.state==='connected'?'Spotify connected'+(data.auth.account&&data.auth.account.displayName?' as '+data.auth.account.displayName:''):'Spotify not connected yet');
   data.clients.forEach(function(c){

@@ -11,10 +11,12 @@ import {
   type IInstallResult, type IMcpClientAdapter, type IVerificationResult,
 } from '../models/client-adapter.js';
 import { performMcpHandshake } from './mcp-handshake.js';
+import type { PluginInstaller } from '../plugin/installer.js';
 
 const ENTRY_NAME = 'spotify-curator';
 
 export interface IChatGptAdapterDeps {
+  plugin?: PluginInstaller;
   env?: NodeJS.ProcessEnv;
   home?: string;
   backupDir?: string;
@@ -53,6 +55,10 @@ export class ChatGptDesktopAdapter implements IMcpClientAdapter {
       configPath: this.configPath, configExists: raw !== null, valid: true,
       registered: false, upToDate: false, command: null, conflicts: [], problems: [],
     };
+    if (this.deps.plugin && (await this.deps.plugin.status()).enabled) {
+      return { ...result, configExists: true, registered: true, upToDate: true,
+        command: this.expectedCommand ? [this.expectedCommand[0], 'plugin-mcp'] : null };
+    }
     if (raw === null) return result;
     let document: Record<string, unknown>;
     try { document = parseConfig(raw); }
@@ -80,6 +86,10 @@ export class ChatGptDesktopAdapter implements IMcpClientAdapter {
   }
 
   public async install(options: IInstallOptions): Promise<IInstallResult> {
+    if (this.deps.plugin && (await this.deps.plugin.status()).enabled) {
+      await this.deps.plugin.install();
+      return { changed: true, configPath: this.configPath, backupPath: null, disabledConflicts: [] };
+    }
     const path = options.configPath ?? this.configPath;
     if (options.entryName && options.entryName !== ENTRY_NAME) throw new Error('The ChatGPT entry name must be spotify-curator.');
     const original = await readOptional(path);
@@ -105,6 +115,7 @@ export class ChatGptDesktopAdapter implements IMcpClientAdapter {
   }
 
   public async verify(): Promise<IVerificationResult> {
+    if (this.deps.plugin && (await this.deps.plugin.status()).enabled) return this.deps.plugin.verify();
     const config = await this.inspect();
     const checks: IVerificationResult['checks'] = [
       { name: 'Desktop settings', ok: config.valid && config.registered && config.upToDate,
