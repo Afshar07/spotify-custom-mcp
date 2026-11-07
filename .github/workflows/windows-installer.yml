@@ -40,5 +40,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          $assets = (Get-ChildItem dist-installer\*.exe).FullName
+          $assets = @((Get-ChildItem dist-installer\*.exe).FullName)
           gh release upload "$env:RELEASE_TAG" @assets dist-installer\SHA256SUMS.txt --repo "$env:GITHUB_REPOSITORY" --clobber
