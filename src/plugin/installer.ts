@@ -1,6 +1,6 @@
 import { mkdir, open, readFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
+import { basename, delimiter, dirname, join, relative, sep } from 'node:path';
 import { parse, patch } from '@decimalturn/toml-patch';
 import { writeFileAtomic } from '../auth/settings.js';
 import { performMcpHandshake } from '../clients/mcp-handshake.js';
@@ -102,10 +102,11 @@ export class PluginInstaller {
       const root = join(this.home, String(source.path));
       const raw = await optionalFile(join(root, 'mcp.json'));
       const server = record(record(JSON.parse(raw ?? '{}').mcpServers)[NAME]);
-      if (server.command !== this.options.executablePath || JSON.stringify(server.args) !== '["plugin-mcp"]') throw new Error('Plugin launch settings need repair.');
+      if (server.command !== basename(this.options.executablePath) || JSON.stringify(server.args) !== '["plugin-mcp"]') throw new Error('Plugin launch settings need repair.');
       const env = record(server.env);
       if (Object.values(env).some((value) => typeof value !== 'string')) throw new Error('Plugin environment is invalid.');
-      const result = await (this.options.handshake ?? performMcpHandshake)([this.options.executablePath, 'plugin-mcp'], { env: env as Record<string, string> });
+      if (typeof env.PATH !== 'string' || env.PATH.split(delimiter)[0] !== dirname(this.options.executablePath)) throw new Error('Plugin executable search path needs repair.');
+      const result = await (this.options.handshake ?? performMcpHandshake)([server.command as string, 'plugin-mcp'], { env: env as Record<string, string> });
       if (result.serverName !== 'spotify-custom-mcp' || REQUIRED_TOOLS.some((name) => !result.toolNames.includes(name))) throw new Error('Plugin tools could not be verified.');
       return { ok: true, toolCount: result.toolNames.length, checks: [{ name: 'Spotify Curator plugin', ok: true, detail: `Plugin server starts with ${result.toolNames.length} tools. Restart your desktop app to load its skills; desktop loading is not checked here.` }] };
     } catch {
@@ -166,9 +167,13 @@ export class PluginInstaller {
         if (value === undefined) throw new Error('A legacy environment setting is unavailable. Start Spotify Curator Setup from the same environment as your existing connection.');
         inherited[key] = value;
       }
-      const env = { SPOTIFY_CURATOR_DATA_DIR: this.options.dataDir, SPOTIFY_CURATOR_LEGACY_CONFIG: this.configPath, SPOTIFY_CURATOR_LEGACY_ENTRY: legacyName,
+      const inheritedPath = this.options.env?.PATH ?? this.options.env?.Path ?? process.env.PATH ?? process.env.Path;
+      const env = { PATH: [dirname(this.options.executablePath), inheritedPath].filter(Boolean).join(delimiter),
+        SPOTIFY_CURATOR_DATA_DIR: this.options.dataDir, SPOTIFY_CURATOR_LEGACY_CONFIG: this.configPath, SPOTIFY_CURATOR_LEGACY_ENTRY: legacyName,
         ...(envNames.length ? { SPOTIFY_CURATOR_LEGACY_ENV_FILE: privateEnvPath } : {}) };
-      const command = [this.options.executablePath, 'plugin-mcp'];
+      // Portable Agent Plugins reject absolute commands. Resolve the installed executable
+      // through this process-specific PATH, without changing the user's system PATH.
+      const command = [basename(this.options.executablePath), 'plugin-mcp'];
       const verification = await (this.options.handshake ?? performMcpHandshake)(command, { env: { ...inherited, ...env } });
       if (verification.serverName !== 'spotify-custom-mcp' || REQUIRED_TOOLS.some((tool) => !verification.toolNames.includes(tool))) throw new Error('The new Spotify Curator server could not verify its plugin tools. The old connection was kept.');
       const files: IFileChange[] = [];

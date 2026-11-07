@@ -25,8 +25,11 @@ The upgrade merges the personal marketplace at
 `~/.codex/plugins/spotify-curator-local/<version>/`, enables
 `spotify-curator@<existing-marketplace-name>`, and disables the matching old
 desktop MCP entry. OpenCode remains a standalone MCP client. Plugin files
-reference the installed Curator executable by absolute path, so keep the app
-installed. The checked-in `plugins/spotify-curator` folder is a source
+launch the installed Curator executable by its bare name with the installation
+folder prepended to the server's own `PATH`, so keep the app installed. Portable
+Agent Plugins reject absolute executable commands. Verification uses this same
+launch configuration; it does not change the user's system `PATH`.
+The checked-in `plugins/spotify-curator` folder is a source
 template; use Setup to produce installation-specific launch configuration.
 
 **Undo upgrade** restores prior settings when that would not overwrite newer

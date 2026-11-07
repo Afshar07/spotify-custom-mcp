@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { parse } from '@decimalturn/toml-patch';
 import { describe, expect, it } from 'vitest';
 import { legacyMcpEnvironment, PluginInstaller } from '../../src/plugin/installer.js';
@@ -18,6 +18,24 @@ async function fixture(fail = false) {
   return { home, installer, config, original };
 }
 describe('one-click plugin upgrade', () => {
+  it('generates a portable executable name with the installed directory in the launch PATH', async () => {
+    const { installer } = await fixture();
+    const installed = await installer.install();
+    const manifest = JSON.parse(await readFile(join(installed.pluginPath, 'mcp.json'), 'utf8'));
+    const server = manifest.mcpServers['spotify-curator'];
+    expect(server.command).toBe('spotify-curator');
+    expect(server.env.PATH.split(delimiter)[0]).toBe('/apps');
+    expect((await installer.verify()).ok).toBe(true);
+  });
+  it('rejects an absolute portable command even when the executable starts directly', async () => {
+    const { installer } = await fixture();
+    const installed = await installer.install();
+    const path = join(installed.pluginPath, 'mcp.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.mcpServers['spotify-curator'].command = '/apps/spotify-curator';
+    await writeFile(path, JSON.stringify(manifest));
+    expect((await installer.verify()).ok).toBe(false);
+  });
   it('preserves unrelated settings and private credentials, enables plugin, disables legacy only after verification', async () => {
     const { installer, config, home } = await fixture();
     const result = await installer.install();
