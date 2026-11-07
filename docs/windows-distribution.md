@@ -33,7 +33,7 @@ Upgrading: run a newer installer over the old one. Credentials and settings live
 
 - [ ] Bump `version` in `package.json` **and** `src/version.ts` (a test enforces they match).
 - [ ] `npm run typecheck && npm run typecheck:tests && npm test` green.
-- [ ] CI `Windows installer` workflow green, including the real-exe runtime tests and silent install/upgrade/uninstall smoke test.
+- [ ] CI `Windows installer` workflow green (builds the executable and installer, generates checksums, and uploads artifacts; no tests or type checks run in CI).
 - [ ] Manual acceptance on a clean Windows 11 VM (below).
 - [ ] Download the CI artifact, confirm `SHA256SUMS.txt`, scan for secrets (none should be present: only the exe is packaged).
 - [ ] Sign installer and exe (when a certificate exists).
